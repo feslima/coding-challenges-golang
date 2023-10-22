@@ -1,0 +1,3 @@
+[wc]
+entry_point = './wc/main.go'
+output = './wc/ccwc'
