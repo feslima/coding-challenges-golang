@@ -2,3 +2,16 @@ commit-msg:
   commands:
     "lint commit message with commitlint":
       run: npx commitlint --edit {1}
+    fmt:
+      glob: "*.go"
+      # test -z forces gofmt to exit with non-zero code (https://github.com/golang/go/issues/24230)
+      run: test -z $(gofmt -l -w . {all_files})
+    "run tests":
+      glob: "*.go"
+      run: go test {all_files}
+pre-push:
+  commands:
+    "tidy":
+      files: git diff --name-only master
+      glob: "*.go"
+      run: go mod tidy -c {files}
