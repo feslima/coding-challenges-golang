@@ -7,11 +7,13 @@ import (
 )
 
 type WcConfigs struct {
+	in               *os.File
 	shouldCountBytes bool
 }
 
 func (c *WcConfigs) getFlags() {
 	flag.BoolVar(&c.shouldCountBytes, "c", true, "print the bytes count")
+	flag.Parse()
 }
 
 type WcResult struct {
