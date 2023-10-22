@@ -1,16 +1,22 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
 )
 
 func main() {
-	configs := WcConfigs{in: nil, shouldCountBytes: false}
-	configs.getFlags()
+	programName := os.Args[0]
+	args := os.Args[1:]
 
-	if filename := flag.Arg(0); filename != "" {
+	configs := WcConfigs{in: nil, shouldCountBytes: false, shouldCountLines: false}
+	filename, err := configs.parseFlagsAndFileName(programName, args)
+	if err != nil {
+		fmt.Println("Failed to parse program flags. err: ", err)
+		os.Exit(1)
+	}
+
+	if filename != "" {
 		file, err := openFile(filename)
 		if err != nil {
 			fmt.Println("Expected to open file without errors. err:", err)
