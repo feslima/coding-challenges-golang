@@ -2,8 +2,10 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 )
 
@@ -75,7 +77,7 @@ func (c *WcConfigs) flipAllFlagsIfNoneSet() {
 
 type WcResult struct {
 	name      string
-	byteCount int
+	byteCount int64
 	lineCount int
 	wordCount int
 	charCount int
@@ -98,12 +100,9 @@ func openFile(filename string) (*os.File, error) {
 	return file, nil
 }
 
-func getNumberOfLines(file *os.File) int {
-	_, err := file.Seek(0, 0)
-	if err != nil {
-		return 0
-	}
-	scanner := bufio.NewScanner(file)
+func getNumberOfLines(buf *bytes.Buffer) int {
+	reader := bytes.NewReader(buf.Bytes())
+	scanner := bufio.NewScanner(reader)
 	scanner.Split(bufio.ScanLines)
 
 	var lines int
@@ -114,12 +113,9 @@ func getNumberOfLines(file *os.File) int {
 	return lines
 }
 
-func getNumberOfWords(file *os.File) int {
-	_, err := file.Seek(0, 0)
-	if err != nil {
-		return 0
-	}
-	scanner := bufio.NewScanner(file)
+func getNumberOfWords(buf *bytes.Buffer) int {
+	reader := bytes.NewReader(buf.Bytes())
+	scanner := bufio.NewScanner(reader)
 	scanner.Split(bufio.ScanWords)
 
 	var words int
@@ -129,12 +125,9 @@ func getNumberOfWords(file *os.File) int {
 	return words
 }
 
-func getNumberOfChars(file *os.File) int {
-	_, err := file.Seek(0, 0)
-	if err != nil {
-		return 0
-	}
-	scanner := bufio.NewScanner(file)
+func getNumberOfChars(buf *bytes.Buffer) int {
+	reader := bytes.NewReader(buf.Bytes())
+	scanner := bufio.NewScanner(reader)
 	scanner.Split(bufio.ScanRunes)
 
 	var chars int
@@ -149,10 +142,24 @@ func DoWc(file *os.File) (WcResult, error) {
 	if err != nil {
 		return defaultWcResult, err
 	}
-	lines := getNumberOfLines(file)
-	words := getNumberOfWords(file)
-	chars := getNumberOfChars(file)
-	return WcResult{name: file.Name(), byteCount: int(info.Size()), lineCount: lines, wordCount: words, charCount: chars}, nil
+
+	var reader io.Reader
+	if (info.Mode() & os.ModeCharDevice) == 0 {
+		reader = bufio.NewReader(file)
+	} else {
+		reader = bufio.NewReader(os.Stdin)
+	}
+
+	buf := &bytes.Buffer{}
+	fileSize, err := buf.ReadFrom(reader)
+	if err != nil {
+		return defaultWcResult, err
+	}
+
+	lines := getNumberOfLines(buf)
+	words := getNumberOfWords(buf)
+	chars := getNumberOfChars(buf)
+	return WcResult{name: file.Name(), byteCount: fileSize, lineCount: lines, wordCount: words, charCount: chars}, nil
 }
 
 func getResultsReport(configs WcConfigs, results WcResult) string {

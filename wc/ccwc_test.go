@@ -26,13 +26,14 @@ func TestOpenFile(t *testing.T) {
 func TestNumberOfBytesInFile(t *testing.T) {
 	filename := "test.txt"
 	file, _ := openFile(filename)
+	defer file.Close()
 
 	result, err := DoWc(file)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	want := 342190
+	var want int64 = 342190
 	got := result.byteCount
 	if got != want {
 		t.Errorf("got %d want %d", got, want)
@@ -42,6 +43,7 @@ func TestNumberOfBytesInFile(t *testing.T) {
 func TestNumberOfLinesInFile(t *testing.T) {
 	filename := "test.txt"
 	file, _ := openFile(filename)
+	defer file.Close()
 
 	result, err := DoWc(file)
 	if err != nil {
@@ -58,6 +60,7 @@ func TestNumberOfLinesInFile(t *testing.T) {
 func TestNumberOfWordsInFile(t *testing.T) {
 	filename := "test.txt"
 	file, _ := openFile(filename)
+	defer file.Close()
 
 	result, err := DoWc(file)
 	if err != nil {
