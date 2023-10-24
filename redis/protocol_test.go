@@ -7,7 +7,7 @@ import (
 
 func TestBulkStringsDeserialization(t *testing.T) {
 	cases := []struct {
-		name      string
+		desc      string
 		raw       []byte
 		want      *Cmd
 		wantError bool
@@ -23,7 +23,7 @@ func TestBulkStringsDeserialization(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
+		t.Run(c.desc, func(t *testing.T) {
 			got, err := DecodeMessage(c.raw)
 
 			if c.wantError {
@@ -32,18 +32,56 @@ func TestBulkStringsDeserialization(t *testing.T) {
 				}
 			} else {
 				if err != nil {
-					t.Errorf("Should not throw an error. err: %v", err)
+					t.Fatalf("Should not throw an error. err: %v", err)
 				}
 
 				if got == nil {
-					t.Error("Return value expected to not be nil.")
+					t.Fatal("Return value expected to not be nil.")
 				}
 
 				if !reflect.DeepEqual(got.parsed, c.want.parsed) {
-					t.Errorf("Expected parsed bulk string to be %v. Got %v", c.want.parsed, got.parsed)
+					t.Fatalf("Expected parsed bulk string to be %v. Got %v", c.want.parsed, got.parsed)
 				}
 			}
 		})
 	}
+}
 
+func TestArrayDeserialization(t *testing.T) {
+	testCases := []struct {
+		desc      string
+		raw       []byte
+		want      *Cmd
+		wantError bool
+	}{
+		{
+			desc:      "should return empty array",
+			raw:       []byte("*0\r\n"),
+			want:      &Cmd{parsed: []string{}},
+			wantError: false,
+		},
+	}
+	for _, tC := range testCases {
+		t.Run(tC.desc, func(t *testing.T) {
+			got, err := DecodeMessage(tC.raw)
+
+			if tC.wantError {
+				if err == nil {
+					t.Errorf("Should throw an error. got: %v", got)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("Should not throw an error. err: %v", err)
+				}
+
+				if got == nil {
+					t.Fatal("Return value expected to not be nil.")
+				}
+
+				if !reflect.DeepEqual(got.parsed, tC.want.parsed) {
+					t.Fatalf("Expected parsed array to be %v. Got %v", tC.want.parsed, got.parsed)
+				}
+			}
+		})
+	}
 }

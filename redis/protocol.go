@@ -48,11 +48,26 @@ func (c *Cmd) decodeBulkString(raw []byte) error {
 	}
 
 	if raw[len(raw)-2] != raw[dataStartIndex+length] {
-		return errors.New("data does not match length.")
+		return errors.New("data does not match length")
 	}
 
 	dataChunk := string(raw[dataStartIndex : len(raw)-2])
 	c.parsed = []string{dataChunk}
+	return nil
+}
+
+func (c *Cmd) decodeArray(raw []byte) error {
+	s := string(raw)
+	numOfElements, err := strconv.ParseUint(string(s[0]), 10, 0)
+	if err != nil {
+		return errors.New("failed to parse number of elements to unsigned int")
+	}
+
+	if numOfElements == 0 {
+		c.parsed = make([]string, 0)
+		return nil
+	}
+
 	return nil
 }
 
@@ -61,14 +76,19 @@ func DecodeMessage(rawMessage []byte) (*Cmd, error) {
 		return nil, errors.New("Got an empty message")
 	}
 	firstByte := rawMessage[0]
+	remaining := rawMessage[1:]
 
 	cmd := Cmd{parsed: nil}
 
+	var err error
 	switch firstByte {
 	case byte(BulkString):
-		err := cmd.decodeBulkString(rawMessage[1:])
-		return &cmd, err
+		err = cmd.decodeBulkString(remaining)
+	case byte(Array):
+		err = cmd.decodeArray(remaining)
+	default:
+		err = errors.New("invalid command")
 	}
 
-	return nil, nil
+	return &cmd, err
 }
