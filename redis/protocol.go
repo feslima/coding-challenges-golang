@@ -2,6 +2,7 @@ package redis
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 )
@@ -111,10 +112,12 @@ type Command string
 
 const (
 	PING = "PING"
+	ECHO = "ECHO"
 )
 
 var cmdParseTable = map[string]Command{
 	"ping": PING,
+	"echo": ECHO,
 }
 
 func ParseCommand(raw string) (Command, error) {
@@ -139,7 +142,18 @@ func ProcessCommand(parsed []string) (string, error) {
 
 	case PING:
 		return "+PONG\r\n", nil
+
+	case ECHO:
+		return ProcessEcho(parsed[1:])
 	}
+}
+
+func ProcessEcho(args []string) (string, error) {
+	if len(args) != 1 {
+		return "", errors.New("wrong number of arguments.")
+	}
+
+	return SerializeBulkString(args[0]), nil
 }
 
 func DecodeMessage(rawMessage []byte) (*Cmd, error) {
@@ -175,4 +189,8 @@ func ProcessRequest(raw []byte) ([]byte, error) {
 	}
 
 	return []byte(response), nil
+}
+
+func SerializeBulkString(data string) string {
+	return fmt.Sprintf("$%d\r\n%s\r\n", len(data), data)
 }

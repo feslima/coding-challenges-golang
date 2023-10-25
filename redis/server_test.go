@@ -77,6 +77,21 @@ func TestProcessConnection(t *testing.T) {
 			data: "*1\r\n$4\r\npang\r\n",
 			want: errorResponse,
 		},
+		{
+			desc: "echo command",
+			data: "*2\r\n$4\r\necho\r\n$11\r\nhello world\r\n",
+			want: []byte("$11\r\nhello world\r\n"),
+		},
+		{
+			desc: "empty echo command",
+			data: "*2\r\n$4\r\necho\r\n$0\r\n\r\n",
+			want: []byte("$0\r\n\r\n"),
+		},
+		{
+			desc: "invalid echo command",
+			data: "*1\r\n$4\r\necho\r\n",
+			want: errorResponse,
+		},
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
@@ -91,7 +106,7 @@ func TestProcessConnection(t *testing.T) {
 			}
 
 			if !reflect.DeepEqual(got, tC.want) {
-				t.Errorf("got: %#v. want: %#v", got, tC.want)
+				t.Errorf("got: %#v. want: %#v", string(got), string(tC.want))
 			}
 		})
 	}
