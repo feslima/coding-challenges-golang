@@ -107,6 +107,41 @@ func (c *Cmd) decodeArray(raw []byte) error {
 	return nil
 }
 
+type Command string
+
+const (
+	PING = "PING"
+)
+
+var cmdParseTable = map[string]Command{
+	"ping": PING,
+}
+
+func ParseCommand(raw string) (Command, error) {
+	lower := strings.ToLower(raw)
+	cmd, ok := cmdParseTable[lower]
+	if !ok {
+		return "", errors.New("invalid command")
+	}
+
+	return cmd, nil
+}
+
+func ProcessCommand(parsed []string) (string, error) {
+	cmd, err := ParseCommand(parsed[0])
+	if err != nil {
+		return "", err
+	}
+
+	switch cmd {
+	default:
+		return "", errors.New("invalid command")
+
+	case PING:
+		return "+PONG\r\n", nil
+	}
+}
+
 func DecodeMessage(rawMessage []byte) (*Cmd, error) {
 	if len(rawMessage) == 0 {
 		return nil, errors.New("Got an empty message")
@@ -123,8 +158,21 @@ func DecodeMessage(rawMessage []byte) (*Cmd, error) {
 	case byte(Array):
 		err = cmd.decodeArray(remaining)
 	default:
-		err = errors.New("invalid command")
+		err = errors.New("invalid first byte")
 	}
 
 	return &cmd, err
+}
+
+func ProcessRequest(raw []byte) ([]byte, error) {
+	command, err := DecodeMessage(raw)
+	if err != nil {
+		return []byte{}, err
+	}
+	response, err := ProcessCommand(command.parsed)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	return []byte(response), nil
 }
