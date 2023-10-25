@@ -1,3 +1,7 @@
 [wc]
 entry_point = './wc/main.go'
 output = './wc/ccwc'
+
+[redis]
+entry_point = './redis/cmd/main.go'
+output = './redis/redis-go'
