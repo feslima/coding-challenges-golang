@@ -20,6 +20,7 @@ func TestBulkStringsDeserialization(t *testing.T) {
 		{"should return string slice with single string if bulk string is received", []byte("$5\r\nhello\r\n"), &Cmd{parsed: []string{"hello"}}, false},
 		{"should return error if bulk length does not match data (less)", []byte("$4\r\nhello\r\n"), nil, true},
 		{"should return error if bulk length does not match data (greater)", []byte("$6\r\nhello\r\n"), nil, true},
+		{"should return string slice with single string if bulk string is received with whitespace", []byte("$11\r\nhello world\r\n"), &Cmd{parsed: []string{"hello world"}}, false},
 	}
 
 	for _, c := range cases {
@@ -58,6 +59,30 @@ func TestArrayDeserialization(t *testing.T) {
 			desc:      "should return empty array",
 			raw:       []byte("*0\r\n"),
 			want:      &Cmd{parsed: []string{}},
+			wantError: false,
+		},
+		{
+			desc:      "should return string array (hello)",
+			raw:       []byte("*2\r\n$5\r\nhello\r\n$5\r\nworld\r\n"),
+			want:      &Cmd{parsed: []string{"hello", "world"}},
+			wantError: false,
+		},
+		{
+			desc:      "should return string array (echo)",
+			raw:       []byte("*2\r\n$4\r\necho\r\n$11\r\nhello world\r\n"),
+			want:      &Cmd{parsed: []string{"echo", "hello world"}},
+			wantError: false,
+		},
+		{
+			desc:      "should return string array (ping)",
+			raw:       []byte("*1\r\n$4\r\nping\r\n"),
+			want:      &Cmd{parsed: []string{"ping"}},
+			wantError: false,
+		},
+		{
+			desc:      "should return string array (get)",
+			raw:       []byte("*2\r\n$3\r\nget\r\n$3\r\nkey\r\n"),
+			want:      &Cmd{parsed: []string{"get", "key"}},
 			wantError: false,
 		},
 	}

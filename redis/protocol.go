@@ -3,6 +3,7 @@ package redis
 import (
 	"errors"
 	"strconv"
+	"strings"
 )
 
 type RESPType byte
@@ -11,6 +12,18 @@ const (
 	Array      RESPType = '*'
 	BulkString RESPType = '$'
 )
+
+func getFirstCRIndex(raw []byte) int64 {
+	crIndex := int64(0)
+	for i, c := range raw {
+		if c == '\r' {
+			crIndex = int64(i)
+			break
+		}
+	}
+
+	return crIndex
+}
 
 type Cmd struct {
 	parsed []string
@@ -57,17 +70,40 @@ func (c *Cmd) decodeBulkString(raw []byte) error {
 }
 
 func (c *Cmd) decodeArray(raw []byte) error {
+	crIndex := getFirstCRIndex(raw)
+
 	s := string(raw)
-	numOfElements, err := strconv.ParseUint(string(s[0]), 10, 0)
+	numOfElements, err := strconv.ParseUint(string(s[:crIndex]), 10, 0)
 	if err != nil {
 		return errors.New("failed to parse number of elements to unsigned int")
 	}
 
+	c.parsed = make([]string, 0)
 	if numOfElements == 0 {
-		c.parsed = make([]string, 0)
 		return nil
 	}
 
+	split := strings.Split(s[crIndex+2:], "\r\n")
+	if split[len(split)-1] == "" {
+		split = split[:len(split)-1]
+	}
+
+	for i := 0; i < len(split); i += 2 {
+		rawLength := split[i][1:]
+		length, err := strconv.ParseInt(rawLength, 10, 0)
+		if err != nil {
+			c.parsed = nil
+			return err
+		}
+
+		data := split[i+1]
+		if int64(len(data)) != length {
+			c.parsed = nil
+			return errors.New("length and data mismatch")
+		}
+
+		c.parsed = append(c.parsed, data)
+	}
 	return nil
 }
 
