@@ -40,6 +40,7 @@ func ProcessConnection(connection net.Conn, handler ConnectionHandler) {
 	n, err := reader.Read(buf)
 	if err != nil {
 		connection.Write(errorResponse)
+		return
 	}
 	buf = buf[:n]
 
@@ -48,10 +49,12 @@ func ProcessConnection(connection net.Conn, handler ConnectionHandler) {
 	response, err := handler(buf)
 	if err != nil {
 		connection.Write(errorResponse)
+		return
 	}
 
 	_, err = connection.Write(response)
 	if err != nil {
 		connection.Write(errorResponse)
+		return
 	}
 }
