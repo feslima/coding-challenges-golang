@@ -1,10 +1,15 @@
 package main
 
 import (
+	"log/slog"
+	"os"
 	"redis"
 )
 
 func main() {
+	logHandler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})
+	slog.SetDefault(slog.New(logHandler))
+
 	host := "localhost"
 	port := "6700"
 

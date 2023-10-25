@@ -2,6 +2,7 @@ package redis
 
 import (
 	"bufio"
+	"log/slog"
 	"net"
 )
 
@@ -10,12 +11,15 @@ func NewServer(host string, port string) (net.Listener, error) {
 	if err != nil {
 		return nil, err
 	}
+	slog.Info("Initialized server " + host + ":" + port)
 	return server, err
 }
 
 type ConnectionHandler func([]byte) ([]byte, error)
 
 func Listen(server net.Listener, handler ConnectionHandler) error {
+	defer server.Close()
+
 	for {
 		conn, err := server.Accept()
 		if err != nil {
@@ -38,6 +42,8 @@ func ProcessConnection(connection net.Conn, handler ConnectionHandler) {
 		connection.Write(errorResponse)
 	}
 	buf = buf[:n]
+
+	slog.Debug("received: " + string(buf))
 
 	response, err := handler(buf)
 	if err != nil {
