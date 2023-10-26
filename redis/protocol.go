@@ -110,11 +110,13 @@ type Command string
 const (
 	PING = "PING"
 	ECHO = "ECHO"
+	SET  = "SET"
 )
 
 var cmdParseTable = map[string]Command{
 	"ping": PING,
 	"echo": ECHO,
+	"set":  SET,
 }
 
 func (c *Cmd) Parse() error {
@@ -130,7 +132,7 @@ func (c *Cmd) Parse() error {
 	return nil
 }
 
-func (c *Cmd) Process() (string, error) {
+func (c *Cmd) Process(a *Application) (string, error) {
 	err := c.Parse()
 	if err != nil {
 		return "", err
@@ -145,6 +147,9 @@ func (c *Cmd) Process() (string, error) {
 
 	case ECHO:
 		return ProcessEcho(c.args)
+
+	case SET:
+		return ProcessSet(c.args, a)
 	}
 }
 
@@ -154,6 +159,20 @@ func ProcessEcho(args []string) (string, error) {
 	}
 
 	return SerializeBulkString(args[0]), nil
+}
+
+func ProcessSet(args []string, app *Application) (string, error) {
+	if len(args) != 2 {
+		return "", errors.New("wrong number of arguments.")
+	}
+
+	key := args[0]
+	value := args[1]
+
+	state := app.state.stringMap
+	state[key] = value
+
+	return SerializeSimpleString("OK"), nil
 }
 
 func DecodeMessage(rawMessage []byte) (*Cmd, error) {
@@ -186,19 +205,10 @@ func DecodeMessage(rawMessage []byte) (*Cmd, error) {
 	return &cmd, err
 }
 
-func ProcessRequest(raw []byte) ([]byte, error) {
-	command, err := DecodeMessage(raw)
-	if err != nil {
-		return []byte{}, err
-	}
-	response, err := command.Process()
-	if err != nil {
-		return []byte{}, err
-	}
-
-	return []byte(response), nil
-}
-
 func SerializeBulkString(data string) string {
 	return fmt.Sprintf("$%d\r\n%s\r\n", len(data), data)
+}
+
+func SerializeSimpleString(data string) string {
+	return fmt.Sprintf("+%s\r\n", data)
 }

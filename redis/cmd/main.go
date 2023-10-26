@@ -17,7 +17,9 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	err = redis.Listen(server, redis.ProcessRequest)
+
+	app := redis.NewApplication()
+	err = redis.Listen(server, app.ProcessRequest)
 	if err != nil {
 		panic(err)
 	}
