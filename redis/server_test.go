@@ -61,7 +61,7 @@ func (c *ConnectionTester) SetWriteDeadline(t time.Time) error {
 	return nil
 }
 
-func TestProcessConnection(t *testing.T) {
+func TestReadonlyCommands(t *testing.T) {
 	testCases := []struct {
 		desc string
 		data string
@@ -95,7 +95,6 @@ func TestProcessConnection(t *testing.T) {
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-
 			connection := NewConnection(tC.data)
 			ProcessConnection(connection, ProcessRequest)
 
@@ -111,3 +110,31 @@ func TestProcessConnection(t *testing.T) {
 		})
 	}
 }
+
+// func TestSetCommand(t *testing.T) {
+// 	testCases := []struct {
+// 		desc string
+// 		data string
+// 		want []byte
+// 	}{
+// 		{
+// 			desc: "set command",
+// 			data: "*3\r\n$3\r\nset\r\n$4\r\nName\r\n$4\r\nJohn\r\n",
+// 			want: []byte("+OK\r\n"),
+// 		},
+// 	}
+// 	for _, tC := range testCases {
+// 		t.Run(tC.desc, func(t *testing.T) {
+// 			connection := NewConnection(tC.data)
+// 			ProcessConnection(connection, ProcessRequest)
+//
+// 			got := connection.response
+//
+// 			if connection.closeCallCount != 1 {
+// 				t.Errorf("connection not closed properly. Call count %d", connection.closeCallCount)
+// 			}
+//
+// 			if !reflect.DeepEqual(got, tC.want) {
+// 				t.Errorf("got: %#v. want: %#v", string(got), string(tC.want))
+// 			}
+// 		})

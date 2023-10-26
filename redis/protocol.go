@@ -27,10 +27,12 @@ func getFirstCRIndex(raw []byte) int64 {
 }
 
 type Cmd struct {
-	parsed []string
+	processed []string
+	cmd       Command
+	args      []string
 }
 
-func (c *Cmd) decodeBulkString(raw []byte) error {
+func decodeBulkString(raw []byte) ([]string, error) {
 	rawLength := []rune{}
 	dataStartIndex := int64(0)
 	for i, c := range raw {
@@ -43,45 +45,42 @@ func (c *Cmd) decodeBulkString(raw []byte) error {
 
 	rawString := string(rawLength)
 	if rawString[0] == '-' && rawString != "-1" {
-		return errors.New("invalid null string")
+		return nil, errors.New("invalid null string")
 	}
 
 	length, err := strconv.ParseInt(rawString, 10, 0)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if length == -1 {
-		c.parsed = nil
-		return nil
+		return nil, err
 	}
 
 	if length == 0 {
-		c.parsed = []string{""}
-		return nil
+		return []string{""}, nil
 	}
 
 	if raw[len(raw)-2] != raw[dataStartIndex+length] {
-		return errors.New("data does not match length")
+		return nil, errors.New("data does not match length")
 	}
 
 	dataChunk := string(raw[dataStartIndex : len(raw)-2])
-	c.parsed = []string{dataChunk}
-	return nil
+	return []string{dataChunk}, nil
 }
 
-func (c *Cmd) decodeArray(raw []byte) error {
+func decodeArray(raw []byte) ([]string, error) {
 	crIndex := getFirstCRIndex(raw)
 
 	s := string(raw)
 	numOfElements, err := strconv.ParseUint(string(s[:crIndex]), 10, 0)
 	if err != nil {
-		return errors.New("failed to parse number of elements to unsigned int")
+		return nil, errors.New("failed to parse number of elements to unsigned int")
 	}
 
-	c.parsed = make([]string, 0)
+	parsed := make([]string, 0)
 	if numOfElements == 0 {
-		return nil
+		return parsed, nil
 	}
 
 	split := strings.Split(s[crIndex+2:], "\r\n")
@@ -93,19 +92,17 @@ func (c *Cmd) decodeArray(raw []byte) error {
 		rawLength := split[i][1:]
 		length, err := strconv.ParseInt(rawLength, 10, 0)
 		if err != nil {
-			c.parsed = nil
-			return err
+			return nil, err
 		}
 
 		data := split[i+1]
 		if int64(len(data)) != length {
-			c.parsed = nil
-			return errors.New("length and data mismatch")
+			return nil, errors.New("length and data mismatch")
 		}
 
-		c.parsed = append(c.parsed, data)
+		parsed = append(parsed, data)
 	}
-	return nil
+	return parsed, nil
 }
 
 type Command string
@@ -120,23 +117,26 @@ var cmdParseTable = map[string]Command{
 	"echo": ECHO,
 }
 
-func ParseCommand(raw string) (Command, error) {
-	lower := strings.ToLower(raw)
+func (c *Cmd) Parse() error {
+	lower := strings.ToLower(c.processed[0])
 	cmd, ok := cmdParseTable[lower]
 	if !ok {
-		return "", errors.New("invalid command")
+		return errors.New("invalid command")
 	}
 
-	return cmd, nil
+	c.cmd = cmd
+	c.args = c.processed[1:]
+
+	return nil
 }
 
-func ProcessCommand(parsed []string) (string, error) {
-	cmd, err := ParseCommand(parsed[0])
+func (c *Cmd) Process() (string, error) {
+	err := c.Parse()
 	if err != nil {
 		return "", err
 	}
 
-	switch cmd {
+	switch c.cmd {
 	default:
 		return "", errors.New("invalid command")
 
@@ -144,7 +144,7 @@ func ProcessCommand(parsed []string) (string, error) {
 		return "+PONG\r\n", nil
 
 	case ECHO:
-		return ProcessEcho(parsed[1:])
+		return ProcessEcho(c.args)
 	}
 }
 
@@ -163,14 +163,22 @@ func DecodeMessage(rawMessage []byte) (*Cmd, error) {
 	firstByte := rawMessage[0]
 	remaining := rawMessage[1:]
 
-	cmd := Cmd{parsed: nil}
+	cmd := Cmd{processed: nil}
 
 	var err error
 	switch firstByte {
 	case byte(BulkString):
-		err = cmd.decodeBulkString(remaining)
+		parsed, err := decodeBulkString(remaining)
+		if err != nil {
+			return nil, err
+		}
+		cmd.processed = parsed
 	case byte(Array):
-		err = cmd.decodeArray(remaining)
+		parsed, err := decodeArray(remaining)
+		if err != nil {
+			return nil, err
+		}
+		cmd.processed = parsed
 	default:
 		err = errors.New("invalid first byte")
 	}
@@ -183,7 +191,7 @@ func ProcessRequest(raw []byte) ([]byte, error) {
 	if err != nil {
 		return []byte{}, err
 	}
-	response, err := ProcessCommand(command.parsed)
+	response, err := command.Process()
 	if err != nil {
 		return []byte{}, err
 	}
