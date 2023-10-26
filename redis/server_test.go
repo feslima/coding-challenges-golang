@@ -155,3 +155,44 @@ func TestSetCommand(t *testing.T) {
 		})
 	}
 }
+
+func TestGetCommand(t *testing.T) {
+	testCases := []struct {
+		desc  string
+		data  string
+		want  []byte
+		state map[string]string
+	}{
+		{
+			desc:  "get existing string key",
+			data:  "*2\r\n$3\r\nget\r\n$4\r\nName\r\n",
+			want:  []byte("$4\r\nJohn\r\n"),
+			state: map[string]string{"Name": "John"},
+		},
+		{
+			desc:  "get non existing string key",
+			data:  "*2\r\n$3\r\nget\r\n$4\r\nName\r\n",
+			want:  []byte("$-1\r\n"),
+			state: map[string]string{},
+		},
+	}
+	for _, tC := range testCases {
+		t.Run(tC.desc, func(t *testing.T) {
+			connection := NewConnection(tC.data)
+			app := NewApplication()
+			app.state.stringMap = tC.state
+
+			ProcessConnection(connection, app.ProcessRequest)
+
+			got := connection.response
+
+			if connection.closeCallCount != 1 {
+				t.Errorf("connection not closed properly. Call count %d", connection.closeCallCount)
+			}
+
+			if !reflect.DeepEqual(got, tC.want) {
+				t.Errorf("got: %#v. want: %#v", string(got), string(tC.want))
+			}
+		})
+	}
+}

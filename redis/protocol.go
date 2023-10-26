@@ -111,12 +111,14 @@ const (
 	PING = "PING"
 	ECHO = "ECHO"
 	SET  = "SET"
+	GET  = "GET"
 )
 
 var cmdParseTable = map[string]Command{
 	"ping": PING,
 	"echo": ECHO,
 	"set":  SET,
+	"get":  GET,
 }
 
 func (c *Cmd) Parse() error {
@@ -150,6 +152,9 @@ func (c *Cmd) Process(a *Application) (string, error) {
 
 	case SET:
 		return ProcessSet(c.args, a)
+
+	case GET:
+		return ProcessGet(c.args, a)
 	}
 }
 
@@ -173,6 +178,19 @@ func ProcessSet(args []string, app *Application) (string, error) {
 	state[key] = value
 
 	return SerializeSimpleString("OK"), nil
+}
+
+func ProcessGet(args []string, app *Application) (string, error) {
+	if len(args) != 1 {
+		return "", errors.New("wrong number of arguments.")
+	}
+
+	value, ok := app.state.stringMap[args[0]]
+	if !ok {
+		return "$-1\r\n", nil
+	}
+
+	return SerializeBulkString(value), nil
 }
 
 func DecodeMessage(rawMessage []byte) (*Cmd, error) {
