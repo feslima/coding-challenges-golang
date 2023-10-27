@@ -125,7 +125,7 @@ func (c *Cmd) Parse() error {
 	lower := strings.ToLower(c.processed[0])
 	cmd, ok := cmdParseTable[lower]
 	if !ok {
-		return errors.New("invalid command")
+		return fmt.Errorf("invalid command: '%s'", lower)
 	}
 
 	c.cmd = cmd
