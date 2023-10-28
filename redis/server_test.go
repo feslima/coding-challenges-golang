@@ -9,24 +9,6 @@ import (
 	"time"
 )
 
-type TestConnectionController struct {
-	done bool
-}
-
-func (tcc *TestConnectionController) onResponseDone() {
-	tcc.done = true
-}
-
-func (tcc TestConnectionController) isDone() bool {
-	return tcc.done
-}
-
-func NewTestConnectionController() *TestConnectionController {
-	return &TestConnectionController{
-		done: false,
-	}
-}
-
 type ConnectionTester struct {
 	request        *bufio.Reader
 	response       []byte
@@ -116,9 +98,9 @@ func TestReadonlyCommands(t *testing.T) {
 			connection := NewConnection(tC.data)
 			app := NewApplication(nil)
 
-			controller := NewTestConnectionController()
 			messenger := handleRequests(app.ProcessRequest)
-			ProcessConnection(connection, &messenger, controller)
+			ProcessConnection(connection, &messenger)
+			messenger.Cancel()
 
 			got := connection.response
 
@@ -158,9 +140,9 @@ func TestSetCommand(t *testing.T) {
 			connection := NewConnection(tC.data)
 			app := NewApplication(nil)
 
-			controller := NewTestConnectionController()
 			messenger := handleRequests(app.ProcessRequest)
-			ProcessConnection(connection, &messenger, controller)
+			ProcessConnection(connection, &messenger)
+			messenger.Cancel()
 
 			got := connection.response
 
@@ -207,8 +189,8 @@ func TestGetCommand(t *testing.T) {
 			app.state.stringMap = tC.state
 
 			messenger := handleRequests(app.ProcessRequest)
-			controller := NewTestConnectionController()
-			ProcessConnection(connection, &messenger, controller)
+			ProcessConnection(connection, &messenger)
+			messenger.Cancel()
 
 			got := connection.response
 

@@ -22,8 +22,9 @@ type ConnectionHandler func([]byte) ([]byte, error)
 
 func handleRequests(h ConnectionHandler) messenger {
 	messenger := messenger{
-		in:  make(chan []byte),
-		out: make(chan []byte),
+		in:   make(chan []byte),
+		out:  make(chan []byte),
+		done: make(chan struct{}),
 	}
 	go func() {
 		for raw := range messenger.in {
@@ -50,39 +51,29 @@ func Listen(server net.Listener, handler ConnectionHandler) error {
 			slog.Error("failed to accept connection")
 			return err
 		}
-		controller := PlaceHolderConnectionController{}
 
-		go ProcessConnection(conn, &messenger, controller)
+		go ProcessConnection(conn, &messenger)
 	}
-}
-
-type ConnectionController interface {
-	isDone() bool
-	onResponseDone()
-}
-
-type PlaceHolderConnectionController struct{}
-
-func (cc PlaceHolderConnectionController) isDone() bool {
-	return false
-}
-
-func (cc PlaceHolderConnectionController) onResponseDone() {
 }
 
 var errorResponse []byte = []byte("-couldn't process request\r\n")
 
 type messenger struct {
-	in  chan []byte
-	out chan []byte
+	in   chan []byte
+	out  chan []byte
+	done chan struct{}
 }
 
-func ProcessConnection(conn net.Conn, m *messenger, c ConnectionController) {
+func (m *messenger) Cancel() func() {
+	return func() { close(m.done) }
+}
+
+func ProcessConnection(conn net.Conn, m *messenger) {
 	defer conn.Close()
 	reader := bufio.NewReader(conn)
 	buf := make([]byte, reader.Size())
 
-	for !c.isDone() {
+	for {
 		n, err := reader.Read(buf)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
@@ -96,17 +87,23 @@ func ProcessConnection(conn net.Conn, m *messenger, c ConnectionController) {
 				slog.Error("failed to write error response")
 			}
 
-			c.onResponseDone()
 			continue
 		}
-		read := buf[:n]
 
+		read := buf[:n]
 		slog.Debug("received: " + string(read))
-		m.in <- read
+
+		select {
+		case <-m.done:
+			break
+		case m.in <- read:
+		}
 
 		for result := range m.out {
-			conn.Write(result)
-			c.onResponseDone()
+			_, err := conn.Write(result)
+			if err != nil {
+				slog.Error("failed to write error response")
+			}
 			break
 		}
 	}
