@@ -9,6 +9,14 @@ import (
 	"time"
 )
 
+type TestClockTimer struct {
+	mockNow time.Time
+}
+
+func (c TestClockTimer) Now() time.Time {
+	return c.mockNow
+}
+
 type ConnectionTester struct {
 	request        *bufio.Reader
 	response       []byte
@@ -96,7 +104,8 @@ func TestReadonlyCommands(t *testing.T) {
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
 			connection := NewConnection(tC.data)
-			app := NewApplication(nil)
+			timer := TestClockTimer{mockNow: time.Now()}
+			app := NewApplication(nil, timer)
 
 			messenger := handleRequests(app.ProcessRequest)
 			ProcessConnection(connection, &messenger)
@@ -116,6 +125,8 @@ func TestReadonlyCommands(t *testing.T) {
 }
 
 func TestSetCommand(t *testing.T) {
+	now := time.Now()
+
 	testCases := []struct {
 		desc      string
 		data      string
@@ -123,10 +134,13 @@ func TestSetCommand(t *testing.T) {
 		wantState map[string]StringValue
 	}{
 		{
-			desc:      "set command",
-			data:      "*3\r\n$3\r\nset\r\n$4\r\nName\r\n$4\r\nJohn\r\n",
-			want:      []byte("+OK\r\n"),
-			wantState: map[string]StringValue{"Name": {value: "John"}},
+			desc: "set command",
+			data: "*3\r\n$3\r\nset\r\n$4\r\nName\r\n$4\r\nJohn\r\n",
+			want: []byte("+OK\r\n"),
+			wantState: map[string]StringValue{"Name": {
+				value:   "John",
+				expires: nil,
+			}},
 		},
 		{
 			desc:      "invalid set command",
@@ -138,7 +152,8 @@ func TestSetCommand(t *testing.T) {
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
 			connection := NewConnection(tC.data)
-			app := NewApplication(nil)
+			timer := TestClockTimer{mockNow: now}
+			app := NewApplication(nil, timer)
 
 			messenger := handleRequests(app.ProcessRequest)
 			ProcessConnection(connection, &messenger)
@@ -157,6 +172,61 @@ func TestSetCommand(t *testing.T) {
 			gotState := app.state.stringMap
 			if !reflect.DeepEqual(gotState, tC.wantState) {
 				t.Errorf("got: %#v. want: %#v", gotState, tC.wantState)
+			}
+		})
+	}
+}
+
+func TestSetWithExpiryCommand(t *testing.T) {
+	now := time.Now()
+	future := now.Add(2 * time.Second)
+
+	testCases := []struct {
+		desc      string
+		data      string
+		want      []byte
+		wantState map[string]StringValue
+	}{
+		{
+			desc: "set command with expiry in seconds",
+			data: "*5\r\n$3\r\nset\r\n$4\r\nName\r\n$4\r\nJohn\r\n$2\r\nex\r\n$1\r\n2\r\n",
+			want: []byte("+OK\r\n"),
+			wantState: map[string]StringValue{"Name": {
+				value:   "John",
+				expires: &future,
+			}},
+		},
+	}
+	for _, tC := range testCases {
+		t.Run(tC.desc, func(t *testing.T) {
+			connection := NewConnection(tC.data)
+			timer := TestClockTimer{mockNow: now}
+			app := NewApplication(nil, timer)
+
+			messenger := handleRequests(app.ProcessRequest)
+			ProcessConnection(connection, &messenger)
+			messenger.Cancel()
+
+			got := connection.response
+
+			if connection.closeCallCount != 1 {
+				t.Errorf("connection not closed properly. Call count %d", connection.closeCallCount)
+			}
+
+			if !reflect.DeepEqual(got, tC.want) {
+				t.Errorf("got: %#v. want: %#v", string(got), string(tC.want))
+			}
+
+			gotState := app.state.stringMap
+			gotString := gotState["Name"]
+			wantString := tC.wantState["Name"]
+
+			if gotString.value != wantString.value {
+				t.Errorf("got: %#v. want: %#v", gotString.value, wantString.value)
+			}
+
+			if *gotString.expires != *wantString.expires {
+				t.Errorf("got: %#v. want: %#v", *gotString.expires, *wantString.expires)
 			}
 		})
 	}
@@ -185,7 +255,8 @@ func TestGetCommand(t *testing.T) {
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
 			connection := NewConnection(tC.data)
-			app := NewApplication(nil)
+			timer := TestClockTimer{mockNow: time.Now()}
+			app := NewApplication(nil, timer)
 			app.state.stringMap = tC.state
 
 			messenger := handleRequests(app.ProcessRequest)

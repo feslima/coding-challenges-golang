@@ -6,15 +6,29 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"time"
 )
+
+type ClockTimer interface {
+	Now() time.Time
+}
+
+type RealClockTimer struct{}
+
+func (c RealClockTimer) Now() time.Time {
+	return time.Now()
+}
 
 type Application struct {
 	state  *ApplicationState
 	config *ApplicationConfiguration
 }
 
-func NewApplication(config *ApplicationConfiguration) *Application {
-	state := ApplicationState{stringMap: make(map[string]StringValue)}
+func NewApplication(config *ApplicationConfiguration, timer ClockTimer) *Application {
+	state := ApplicationState{
+		clock:     timer,
+		stringMap: make(map[string]StringValue),
+	}
 	return &Application{state: &state, config: config}
 }
 
@@ -34,10 +48,12 @@ func (app *Application) ProcessRequest(raw []byte) ([]byte, error) {
 }
 
 type StringValue struct {
-	value string
+	value   string
+	expires *time.Time
 }
 
 type ApplicationState struct {
+	clock     ClockTimer
 	stringMap map[string]StringValue
 }
 

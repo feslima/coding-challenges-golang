@@ -3,7 +3,9 @@ package redis
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
+	"time"
 )
 
 type Command string
@@ -64,24 +66,47 @@ func (c *Cmd) Process(a *Application) (string, error) {
 	}
 }
 
+var wrongNumOfArgsErr = errors.New("wrong number of arguments.")
+
 func processEcho(args []string) (string, error) {
 	if len(args) != 1 {
-		return "", errors.New("wrong number of arguments.")
+		return "", wrongNumOfArgsErr
 	}
 
 	return SerializeBulkString(args[0]), nil
 }
 
 func processSet(args []string, app *Application) (string, error) {
-	if len(args) != 2 {
-		return "", errors.New("wrong number of arguments.")
+	nArgs := len(args)
+	if nArgs < 2 {
+		return "", wrongNumOfArgsErr
+	}
+
+	if nArgs > 2 && nArgs != 4 {
+		return "", wrongNumOfArgsErr
 	}
 
 	key := args[0]
 	value := args[1]
 
+	var expiry *time.Time
+	if nArgs > 2 {
+		resolution := strings.ToUpper(args[2])
+		if resolution != "EX" {
+			return "", errors.New("invalid resolution type")
+		}
+		delta, err := strconv.ParseInt(args[3], 10, 0)
+		if err != nil {
+			return "", err
+		}
+		final := app.state.clock.Now().Add(time.Duration(delta) * time.Second)
+		expiry = &final
+	} else {
+		expiry = nil
+	}
+
 	state := app.state.stringMap
-	state[key] = StringValue{value: value}
+	state[key] = StringValue{value: value, expires: expiry}
 
 	return SerializeSimpleString("OK"), nil
 }

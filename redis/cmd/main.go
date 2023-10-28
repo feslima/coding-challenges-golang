@@ -7,7 +7,10 @@ import (
 )
 
 func main() {
-	logHandler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})
+	logOpts := &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}
+	logHandler := slog.NewTextHandler(os.Stderr, logOpts)
 	slog.SetDefault(slog.New(logHandler))
 
 	host := "localhost"
@@ -23,7 +26,8 @@ func main() {
 		panic(err)
 	}
 
-	app := redis.NewApplication(config)
+	timer := redis.RealClockTimer{}
+	app := redis.NewApplication(config, timer)
 	err = redis.Listen(server, app.ProcessRequest)
 	if err != nil {
 		panic(err)
