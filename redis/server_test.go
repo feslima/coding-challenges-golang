@@ -114,7 +114,7 @@ func TestReadonlyCommands(t *testing.T) {
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
 			connection := NewConnection(tC.data)
-			app := NewApplication()
+			app := NewApplication(nil)
 			controller := NewTestConnectionController()
 			ProcessConnection(connection, app.ProcessRequest, controller)
 
@@ -154,7 +154,7 @@ func TestSetCommand(t *testing.T) {
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
 			connection := NewConnection(tC.data)
-			app := NewApplication()
+			app := NewApplication(nil)
 
 			controller := NewTestConnectionController()
 			ProcessConnection(connection, app.ProcessRequest, controller)
@@ -200,7 +200,7 @@ func TestGetCommand(t *testing.T) {
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
 			connection := NewConnection(tC.data)
-			app := NewApplication()
+			app := NewApplication(nil)
 			app.state.stringMap = tC.state
 
 			controller := NewTestConnectionController()

@@ -127,7 +127,7 @@ func TestDecodeAndProcessCommands(t *testing.T) {
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			app := NewApplication()
+			app := NewApplication(nil)
 			got, err := app.ProcessRequest(tC.raw)
 
 			if tC.wantError {

@@ -18,7 +18,12 @@ func main() {
 		panic(err)
 	}
 
-	app := redis.NewApplication()
+	config, err := redis.NewApplicationConfiguration("no", "3600 1 300 100 60 10000")
+	if err != nil {
+		panic(err)
+	}
+
+	app := redis.NewApplication(config)
 	err = redis.Listen(server, app.ProcessRequest)
 	if err != nil {
 		panic(err)

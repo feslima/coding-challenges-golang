@@ -14,6 +14,8 @@ const (
 	BulkString RESPType = '$'
 )
 
+const NIL_BULK_STRING = "$-1\r\n"
+
 func getFirstCRIndex(raw []byte) int64 {
 	crIndex := int64(0)
 	for i, c := range raw {
@@ -97,7 +99,7 @@ func decodeArray(raw []byte) ([]string, error) {
 
 		data := split[i+1]
 		if int64(len(data)) != length {
-			return nil, errors.New("length and data mismatch")
+			return nil, fmt.Errorf("length and data mismatch. received length: %d. data length: %d", length, len(data))
 		}
 
 		parsed = append(parsed, data)
@@ -108,17 +110,19 @@ func decodeArray(raw []byte) ([]string, error) {
 type Command string
 
 const (
-	PING = "PING"
-	ECHO = "ECHO"
-	SET  = "SET"
-	GET  = "GET"
+	PING   = "PING"
+	ECHO   = "ECHO"
+	SET    = "SET"
+	GET    = "GET"
+	CONFIG = "CONFIG"
 )
 
 var cmdParseTable = map[string]Command{
-	"ping": PING,
-	"echo": ECHO,
-	"set":  SET,
-	"get":  GET,
+	"ping":   PING,
+	"echo":   ECHO,
+	"set":    SET,
+	"get":    GET,
+	"config": CONFIG,
 }
 
 func (c *Cmd) Parse() error {
@@ -155,6 +159,9 @@ func (c *Cmd) Process(a *Application) (string, error) {
 
 	case GET:
 		return ProcessGet(c.args, a)
+
+	case CONFIG:
+		return ProcessConfig(c.args, a)
 	}
 }
 
@@ -187,10 +194,46 @@ func ProcessGet(args []string, app *Application) (string, error) {
 
 	value, ok := app.state.stringMap[args[0]]
 	if !ok {
-		return "$-1\r\n", nil
+		return NIL_BULK_STRING, nil
 	}
 
 	return SerializeBulkString(value), nil
+}
+
+func ProcessConfig(args []string, app *Application) (string, error) {
+	if len(args) < 2 {
+		return "", errors.New("wrong number of arguments.")
+	}
+
+	cmd := strings.ToUpper(args[0])
+	switch cmd {
+	default:
+		return SerializeSimpleError(fmt.Sprintf("invalid cmd '%s'", cmd)), nil
+	case "GET":
+		params := args[1:]
+		configs := []string{}
+
+		for _, p := range params {
+			p = strings.ToLower(p)
+			if _, ok := configMap[p]; !ok {
+				return SerializeSimpleError(fmt.Sprintf("invalid parameter '%s'", p)), nil
+			}
+
+			switch p {
+			case "appendonly":
+				configs = append(configs, p)
+				configs = append(configs, app.config.appendonly)
+
+			case "save":
+				configs = append(configs, p)
+				configs = append(configs, app.config.save)
+			}
+
+		}
+
+		return SerializeArray(configs), nil
+
+	}
 }
 
 func DecodeMessage(rawMessage []byte) (*Cmd, error) {
@@ -229,4 +272,24 @@ func SerializeBulkString(data string) string {
 
 func SerializeSimpleString(data string) string {
 	return fmt.Sprintf("+%s\r\n", data)
+}
+
+func SerializeSimpleError(data string) string {
+	return fmt.Sprintf("-%s\r\n", data)
+}
+
+func SerializeArray(data []string) string {
+	length := int64(len(data))
+	result := fmt.Sprintf("*%d\r\n", length)
+
+	if length == 0 {
+		return result
+	}
+
+	for _, v := range data {
+		string := SerializeBulkString(v)
+		result += string
+	}
+
+	return result
 }
