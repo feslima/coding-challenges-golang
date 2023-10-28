@@ -81,7 +81,7 @@ func processSet(args []string, app *Application) (string, error) {
 	value := args[1]
 
 	state := app.state.stringMap
-	state[key] = value
+	state[key] = StringValue{value: value}
 
 	return SerializeSimpleString("OK"), nil
 }
@@ -91,12 +91,12 @@ func processGet(args []string, app *Application) (string, error) {
 		return "", errors.New("wrong number of arguments.")
 	}
 
-	value, ok := app.state.stringMap[args[0]]
+	sv, ok := app.state.stringMap[args[0]]
 	if !ok {
 		return NIL_BULK_STRING, nil
 	}
 
-	return SerializeBulkString(value), nil
+	return SerializeBulkString(sv.value), nil
 }
 
 func processConfig(args []string, app *Application) (string, error) {

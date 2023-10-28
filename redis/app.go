@@ -14,7 +14,7 @@ type Application struct {
 }
 
 func NewApplication(config *ApplicationConfiguration) *Application {
-	state := ApplicationState{stringMap: make(map[string]string)}
+	state := ApplicationState{stringMap: make(map[string]StringValue)}
 	return &Application{state: &state, config: config}
 }
 
@@ -33,8 +33,12 @@ func (app *Application) ProcessRequest(raw []byte) ([]byte, error) {
 	return []byte(response), nil
 }
 
+type StringValue struct {
+	value string
+}
+
 type ApplicationState struct {
-	stringMap map[string]string
+	stringMap map[string]StringValue
 }
 
 var validSaveOptions map[string]bool = map[string]bool{"yes": true, "no": true}

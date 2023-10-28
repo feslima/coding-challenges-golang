@@ -120,19 +120,19 @@ func TestSetCommand(t *testing.T) {
 		desc      string
 		data      string
 		want      []byte
-		wantState map[string]string
+		wantState map[string]StringValue
 	}{
 		{
 			desc:      "set command",
 			data:      "*3\r\n$3\r\nset\r\n$4\r\nName\r\n$4\r\nJohn\r\n",
 			want:      []byte("+OK\r\n"),
-			wantState: map[string]string{"Name": "John"},
+			wantState: map[string]StringValue{"Name": {value: "John"}},
 		},
 		{
 			desc:      "invalid set command",
 			data:      "*3\r\n$2\r\nst\r\n$4\r\nName\r\n$4\r\nJohn\r\n",
 			want:      errorResponse,
-			wantState: map[string]string{},
+			wantState: map[string]StringValue{},
 		},
 	}
 	for _, tC := range testCases {
@@ -167,19 +167,19 @@ func TestGetCommand(t *testing.T) {
 		desc  string
 		data  string
 		want  []byte
-		state map[string]string
+		state map[string]StringValue
 	}{
 		{
 			desc:  "get existing string key",
 			data:  "*2\r\n$3\r\nget\r\n$4\r\nName\r\n",
 			want:  []byte("$4\r\nJohn\r\n"),
-			state: map[string]string{"Name": "John"},
+			state: map[string]StringValue{"Name": {value: "John"}},
 		},
 		{
 			desc:  "get non existing string key",
 			data:  "*2\r\n$3\r\nget\r\n$4\r\nName\r\n",
 			want:  []byte("$-1\r\n"),
-			state: map[string]string{},
+			state: map[string]StringValue{},
 		},
 	}
 	for _, tC := range testCases {
