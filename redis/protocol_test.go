@@ -12,15 +12,59 @@ func TestBulkStringsDeserialization(t *testing.T) {
 		want      *Cmd
 		wantError bool
 	}{
-		{"should return nil if null bulk string is received", []byte("$-1\r\n"), &Cmd{processed: nil}, false},
-		{"should return error if null bulk has no number", []byte("$-\r\n"), nil, true},
-		{"should return error if null bulk has number other than 1", []byte("$-0\r\n"), nil, true},
-		{"should return error if null bulk has number other than 1", []byte("$-2\r\n"), nil, true},
-		{"should return string slice with single empty string if empty bulk string is received", []byte("$0\r\n\r\n"), &Cmd{processed: []string{""}}, false},
-		{"should return string slice with single string if bulk string is received", []byte("$5\r\nhello\r\n"), &Cmd{processed: []string{"hello"}}, false},
-		{"should return error if bulk length does not match data (less)", []byte("$4\r\nhello\r\n"), nil, true},
-		{"should return error if bulk length does not match data (greater)", []byte("$6\r\nhello\r\n"), nil, true},
-		{"should return string slice with single string if bulk string is received with whitespace", []byte("$11\r\nhello world\r\n"), &Cmd{processed: []string{"hello world"}}, false},
+		{
+			"should return nil if null bulk string is received",
+			[]byte("$-1\r\n"),
+			&Cmd{processed: nil},
+			false,
+		},
+		{
+			"should return error if null bulk has no number",
+			[]byte("$-\r\n"),
+			nil,
+			true,
+		},
+		{
+			"should return error if null bulk has number other than 1",
+			[]byte("$-0\r\n"),
+			nil,
+			true,
+		},
+		{
+			"should return error if null bulk has number other than 1",
+			[]byte("$-2\r\n"),
+			nil,
+			true,
+		},
+		{
+			"should return string slice with single empty string if empty bulk string is received",
+			[]byte("$0\r\n\r\n"),
+			&Cmd{processed: []string{""}},
+			false},
+		{
+			"should return string slice with single string if bulk string is received",
+			[]byte("$5\r\nhello\r\n"),
+			&Cmd{processed: []string{"hello"}},
+			false,
+		},
+		{
+			"should return error if bulk length does not match data (less)",
+			[]byte("$4\r\nhello\r\n"),
+			nil,
+			true,
+		},
+		{
+			"should return error if bulk length does not match data (greater)",
+			[]byte("$6\r\nhello\r\n"),
+			nil,
+			true,
+		},
+		{
+			"should return string slice with single string if bulk string is received with whitespace",
+			[]byte("$11\r\nhello world\r\n"),
+			&Cmd{processed: []string{"hello world"}},
+			false,
+		},
 	}
 
 	for _, c := range cases {
