@@ -20,9 +20,30 @@ func NewServer(host string, port string) (net.Listener, error) {
 
 type ConnectionHandler func([]byte) ([]byte, error)
 
+func handleRequests(h ConnectionHandler) messenger {
+	messenger := messenger{
+		in:  make(chan []byte),
+		out: make(chan []byte),
+	}
+	go func() {
+		for raw := range messenger.in {
+			result, err := h(raw)
+			if err != nil {
+				slog.Error(fmt.Sprintf("%v", err))
+				messenger.out <- errorResponse
+				continue
+			}
+			messenger.out <- result
+		}
+	}()
+
+	return messenger
+}
+
 func Listen(server net.Listener, handler ConnectionHandler) error {
 	defer server.Close()
 
+	messenger := handleRequests(handler)
 	for {
 		conn, err := server.Accept()
 		if err != nil {
@@ -31,7 +52,7 @@ func Listen(server net.Listener, handler ConnectionHandler) error {
 		}
 		controller := PlaceHolderConnectionController{}
 
-		go ProcessConnection(conn, handler, controller)
+		go ProcessConnection(conn, &messenger, controller)
 	}
 }
 
@@ -51,62 +72,42 @@ func (cc PlaceHolderConnectionController) onResponseDone() {
 
 var errorResponse []byte = []byte("-couldn't process request\r\n")
 
-func ProcessConnection(connection net.Conn, handler ConnectionHandler, controller ConnectionController) {
-	defer connection.Close()
-	reader := bufio.NewReader(connection)
+type messenger struct {
+	in  chan []byte
+	out chan []byte
+}
 
-	for {
-		// just in case we want to end the connection whenever we want (e.g. testing)
-		if controller.isDone() {
-			return
-		}
+func ProcessConnection(conn net.Conn, m *messenger, c ConnectionController) {
+	defer conn.Close()
+	reader := bufio.NewReader(conn)
+	buf := make([]byte, reader.Size())
 
-		buf := make([]byte, reader.Size())
+	for !c.isDone() {
 		n, err := reader.Read(buf)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				controller.onResponseDone()
-				slog.Warn("EOF error. No more data to read")
+				slog.Debug("EOF error. Client disconnected. No more data to read.")
 				break
 			}
 
 			slog.Error("failed to read bytes: " + fmt.Sprintf("%v", err))
-			_, err = connection.Write(errorResponse)
+			_, err = conn.Write(errorResponse)
 			if err != nil {
 				slog.Error("failed to write error response")
 			}
 
-			controller.onResponseDone()
+			c.onResponseDone()
 			continue
 		}
-		buf = buf[:n]
+		read := buf[:n]
 
-		slog.Debug("received: " + string(buf))
+		slog.Debug("received: " + string(read))
+		m.in <- read
 
-		response, err := handler(buf)
-		if err != nil {
-			slog.Error(fmt.Sprintf("%v", err))
-			_, err = connection.Write(errorResponse)
-			if err != nil {
-				slog.Error("failed to write error response")
-			}
-
-			controller.onResponseDone()
-			continue
+		for result := range m.out {
+			conn.Write(result)
+			c.onResponseDone()
+			break
 		}
-
-		_, err = connection.Write(response)
-		if err != nil {
-			slog.Error("failed to write response")
-			_, err = connection.Write(errorResponse)
-			if err != nil {
-				slog.Error("failed to write error response")
-			}
-
-			controller.onResponseDone()
-			continue
-		}
-
-		controller.onResponseDone()
 	}
 }

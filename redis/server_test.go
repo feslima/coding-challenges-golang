@@ -115,8 +115,10 @@ func TestReadonlyCommands(t *testing.T) {
 		t.Run(tC.desc, func(t *testing.T) {
 			connection := NewConnection(tC.data)
 			app := NewApplication(nil)
+
 			controller := NewTestConnectionController()
-			ProcessConnection(connection, app.ProcessRequest, controller)
+			messenger := handleRequests(app.ProcessRequest)
+			ProcessConnection(connection, &messenger, controller)
 
 			got := connection.response
 
@@ -157,7 +159,8 @@ func TestSetCommand(t *testing.T) {
 			app := NewApplication(nil)
 
 			controller := NewTestConnectionController()
-			ProcessConnection(connection, app.ProcessRequest, controller)
+			messenger := handleRequests(app.ProcessRequest)
+			ProcessConnection(connection, &messenger, controller)
 
 			got := connection.response
 
@@ -203,8 +206,9 @@ func TestGetCommand(t *testing.T) {
 			app := NewApplication(nil)
 			app.state.stringMap = tC.state
 
+			messenger := handleRequests(app.ProcessRequest)
 			controller := NewTestConnectionController()
-			ProcessConnection(connection, app.ProcessRequest, controller)
+			ProcessConnection(connection, &messenger, controller)
 
 			got := connection.response
 
