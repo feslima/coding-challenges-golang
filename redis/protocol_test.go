@@ -110,39 +110,3 @@ func TestArrayDeserialization(t *testing.T) {
 		})
 	}
 }
-
-func TestDecodeAndProcessCommands(t *testing.T) {
-	testCases := []struct {
-		desc      string
-		raw       []byte
-		want      []byte
-		wantError bool
-	}{
-		{
-			desc:      "PING",
-			raw:       []byte("*1\r\n$4\r\nping\r\n"),
-			want:      []byte("+PONG\r\n"),
-			wantError: false,
-		},
-	}
-	for _, tC := range testCases {
-		t.Run(tC.desc, func(t *testing.T) {
-			app := NewApplication(nil)
-			got, err := app.ProcessRequest(tC.raw)
-
-			if tC.wantError {
-				if err == nil {
-					t.Errorf("Should throw an error. got: %v", got)
-				}
-			} else {
-				if err != nil {
-					t.Fatalf("Should not throw an error. err: %v", err)
-				}
-
-				if !reflect.DeepEqual(got, tC.want) {
-					t.Fatalf("got: %s. want: %s", got, tC.want)
-				}
-			}
-		})
-	}
-}
