@@ -177,6 +177,50 @@ func TestSetCommand(t *testing.T) {
 	}
 }
 
+func TestGetCommand(t *testing.T) {
+	testCases := []struct {
+		desc  string
+		data  string
+		want  []byte
+		state map[string]StringValue
+	}{
+		{
+			desc:  "get existing string key",
+			data:  "*2\r\n$3\r\nget\r\n$4\r\nName\r\n",
+			want:  []byte("$4\r\nJohn\r\n"),
+			state: map[string]StringValue{"Name": {value: "John"}},
+		},
+		{
+			desc:  "get non existing string key",
+			data:  "*2\r\n$3\r\nget\r\n$4\r\nName\r\n",
+			want:  []byte("$-1\r\n"),
+			state: map[string]StringValue{},
+		},
+	}
+	for _, tC := range testCases {
+		t.Run(tC.desc, func(t *testing.T) {
+			connection := NewConnection(tC.data)
+			timer := TestClockTimer{mockNow: time.Now()}
+			app := NewApplication(nil, timer)
+			app.state.stringMap = tC.state
+
+			messenger := handleRequests(app.ProcessRequest)
+			ProcessConnection(connection, &messenger)
+			messenger.Cancel()
+
+			got := connection.response
+
+			if connection.closeCallCount != 1 {
+				t.Errorf("connection not closed properly. Call count %d", connection.closeCallCount)
+			}
+
+			if !reflect.DeepEqual(got, tC.want) {
+				t.Errorf("got: %#v. want: %#v", string(got), string(tC.want))
+			}
+		})
+	}
+}
+
 func TestSetWithExpiryCommand(t *testing.T) {
 	now := time.Now()
 	future := now.Add(2 * time.Second)
@@ -227,50 +271,6 @@ func TestSetWithExpiryCommand(t *testing.T) {
 
 			if *gotString.expires != *wantString.expires {
 				t.Errorf("got: %#v. want: %#v", *gotString.expires, *wantString.expires)
-			}
-		})
-	}
-}
-
-func TestGetCommand(t *testing.T) {
-	testCases := []struct {
-		desc  string
-		data  string
-		want  []byte
-		state map[string]StringValue
-	}{
-		{
-			desc:  "get existing string key",
-			data:  "*2\r\n$3\r\nget\r\n$4\r\nName\r\n",
-			want:  []byte("$4\r\nJohn\r\n"),
-			state: map[string]StringValue{"Name": {value: "John"}},
-		},
-		{
-			desc:  "get non existing string key",
-			data:  "*2\r\n$3\r\nget\r\n$4\r\nName\r\n",
-			want:  []byte("$-1\r\n"),
-			state: map[string]StringValue{},
-		},
-	}
-	for _, tC := range testCases {
-		t.Run(tC.desc, func(t *testing.T) {
-			connection := NewConnection(tC.data)
-			timer := TestClockTimer{mockNow: time.Now()}
-			app := NewApplication(nil, timer)
-			app.state.stringMap = tC.state
-
-			messenger := handleRequests(app.ProcessRequest)
-			ProcessConnection(connection, &messenger)
-			messenger.Cancel()
-
-			got := connection.response
-
-			if connection.closeCallCount != 1 {
-				t.Errorf("connection not closed properly. Call count %d", connection.closeCallCount)
-			}
-
-			if !reflect.DeepEqual(got, tC.want) {
-				t.Errorf("got: %#v. want: %#v", string(got), string(tC.want))
 			}
 		})
 	}
