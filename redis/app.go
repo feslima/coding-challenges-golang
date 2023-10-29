@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -28,6 +29,7 @@ func NewApplication(config *ApplicationConfiguration, timer ClockTimer) *Applica
 	state := ApplicationState{
 		clock:     timer,
 		stringMap: make(map[string]StringValue),
+		mutex:     &sync.RWMutex{},
 	}
 	return &Application{state: &state, config: config}
 }
@@ -55,6 +57,7 @@ type StringValue struct {
 type ApplicationState struct {
 	clock     ClockTimer
 	stringMap map[string]StringValue
+	mutex     *sync.RWMutex
 }
 
 var validSaveOptions map[string]bool = map[string]bool{"yes": true, "no": true}

@@ -118,8 +118,10 @@ func processSet(args []string, app *Application) (string, error) {
 		expiry = nil
 	}
 
+	app.state.mutex.Lock()
 	state := app.state.stringMap
 	state[key] = StringValue{value: value, expires: expiry}
+	app.state.mutex.Unlock()
 
 	return OK_SIMPLE_STRING, nil
 }
@@ -130,7 +132,9 @@ func processGet(args []string, app *Application) (string, error) {
 	}
 
 	key := args[0]
+	app.state.mutex.RLock()
 	sv, ok := app.state.stringMap[key]
+	app.state.mutex.RUnlock()
 	if !ok {
 		return NIL_BULK_STRING, nil
 	}
@@ -185,7 +189,9 @@ func processExpire(args []string, app *Application) (string, error) {
 	}
 
 	key := args[0]
+	app.state.mutex.RLock()
 	sv, ok := app.state.stringMap[key]
+	app.state.mutex.RUnlock()
 	if !ok {
 		return SerializeInteger(0), nil
 	}
@@ -205,7 +211,10 @@ func processExpire(args []string, app *Application) (string, error) {
 	}
 
 	sv.expires = &final
+
+	app.state.mutex.Lock()
 	app.state.stringMap[key] = sv
+	app.state.mutex.Unlock()
 
 	return SerializeInteger(1), nil
 }
