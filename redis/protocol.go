@@ -165,3 +165,7 @@ func SerializeArray(data []string) string {
 
 	return result
 }
+
+func SerializeInteger(data int) string {
+	return fmt.Sprintf(":%d\r\n", data)
+}

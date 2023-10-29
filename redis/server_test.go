@@ -355,3 +355,93 @@ func TestActiveKeyExpirationTable(t *testing.T) {
 		})
 	}
 }
+
+func TestExpireCommand(t *testing.T) {
+	now := time.Now()
+	getFuture := func(delta int) *time.Time {
+		future := now.Add(time.Duration(delta) * time.Second)
+		return &future
+	}
+
+	testCases := []struct {
+		desc         string
+		data         string
+		want         []byte
+		initialState map[string]StringValue
+		wantState    map[string]StringValue
+	}{
+		{
+			desc: "expire on persistent key",
+			data: "*3\r\n$6\r\nexpire\r\n$4\r\nName\r\n$1\r\n1\r\n",
+			want: []byte(":1\r\n"),
+			initialState: map[string]StringValue{"Name": {
+				value:   "John",
+				expires: nil,
+			}},
+			wantState: map[string]StringValue{"Name": {
+				value:   "John",
+				expires: getFuture(1),
+			}},
+		},
+		{
+			desc: "expire on volatile key should update time",
+			data: "*3\r\n$6\r\nexpire\r\n$4\r\nName\r\n$1\r\n1\r\n",
+			want: []byte(":1\r\n"),
+			initialState: map[string]StringValue{"Name": {
+				value:   "John",
+				expires: getFuture(1),
+			}},
+			wantState: map[string]StringValue{"Name": {
+				value:   "John",
+				expires: getFuture(2),
+			}},
+		}, {
+			desc: "expire on non-existant key should do nothing",
+			data: "*3\r\n$6\r\nexpire\r\n$7\r\nUnknown\r\n$1\r\n1\r\n",
+			want: []byte(":0\r\n"),
+			initialState: map[string]StringValue{"Name": {
+				value:   "John",
+				expires: getFuture(1),
+			}},
+			wantState: map[string]StringValue{"Name": {
+				value:   "John",
+				expires: getFuture(1),
+			}},
+		},
+	}
+	for _, tC := range testCases {
+		t.Run(tC.desc, func(t *testing.T) {
+			timer := TestClockTimer{mockNow: now}
+			app := NewApplication(nil, timer)
+			app.state.stringMap = tC.initialState
+
+			connection := NewConnection(tC.data)
+			messenger := handleRequests(app.ProcessRequest)
+			ProcessConnection(connection, &messenger)
+			messenger.Cancel()
+
+			got := connection.response
+
+			if connection.closeCallCount != 1 {
+				t.Errorf("connection not closed properly. Call count %d", connection.closeCallCount)
+			}
+
+			want := tC.want
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("got: %#v. want: %#v", string(got), string(want))
+			}
+
+			gotState := app.state.stringMap
+			gotString := gotState["Name"]
+			wantString := tC.wantState["Name"]
+
+			if gotString.value != wantString.value {
+				t.Fatalf("got: %#v. want: %#v", gotString.value, wantString.value)
+			}
+
+			if *gotString.expires != *wantString.expires {
+				t.Errorf("got: %#v. want: %#v", *gotString.expires, *wantString.expires)
+			}
+		})
+	}
+}

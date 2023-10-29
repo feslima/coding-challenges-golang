@@ -16,6 +16,7 @@ const (
 	SET    = "SET"
 	GET    = "GET"
 	CONFIG = "CONFIG"
+	EXPIRE = "EXPIRE"
 )
 
 var cmdParseTable = map[string]Command{
@@ -24,6 +25,7 @@ var cmdParseTable = map[string]Command{
 	"set":    SET,
 	"get":    GET,
 	"config": CONFIG,
+	"expire": EXPIRE,
 }
 
 func (c *Cmd) Parse() error {
@@ -63,6 +65,9 @@ func (c *Cmd) Process(a *Application) (string, error) {
 
 	case CONFIG:
 		return processConfig(c.args, a)
+
+	case EXPIRE:
+		return processExpire(c.args, a)
 	}
 }
 
@@ -172,4 +177,35 @@ func processConfig(args []string, app *Application) (string, error) {
 		return SerializeArray(configs), nil
 
 	}
+}
+
+func processExpire(args []string, app *Application) (string, error) {
+	if len(args) != 2 {
+		return "", errors.New("wrong number of arguments.")
+	}
+
+	key := args[0]
+	sv, ok := app.state.stringMap[key]
+	if !ok {
+		return SerializeInteger(0), nil
+	}
+
+	value := args[1]
+	delta, err := strconv.ParseInt(value, 10, 0)
+	if err != nil {
+		return "", err
+	}
+
+	var final time.Time
+	if sv.expires == nil {
+		final = app.state.clock.Now().Add(time.Duration(delta) * time.Second)
+	} else {
+		// update by adding time to key expiry
+		final = sv.expires.Add(time.Duration(delta) * time.Second)
+	}
+
+	sv.expires = &final
+	app.state.stringMap[key] = sv
+
+	return SerializeInteger(1), nil
 }
