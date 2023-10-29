@@ -92,14 +92,22 @@ func processSet(args []string, app *Application) (string, error) {
 	var expiry *time.Time
 	if nArgs > 2 {
 		resolution := strings.ToUpper(args[2])
-		if resolution != "EX" {
+		if resolution != "EX" && resolution != "PX" {
 			return "", errors.New("invalid resolution type")
 		}
+
+		var resolutionType time.Duration
+		if resolution == "EX" {
+			resolutionType = time.Second
+		} else {
+			resolutionType = time.Millisecond
+		}
+
 		delta, err := strconv.ParseInt(args[3], 10, 0)
 		if err != nil {
 			return "", err
 		}
-		final := app.state.clock.Now().Add(time.Duration(delta) * time.Second)
+		final := app.state.clock.Now().Add(time.Duration(delta) * resolutionType)
 		expiry = &final
 	} else {
 		expiry = nil

@@ -240,6 +240,15 @@ func TestSetWithExpiryCommand(t *testing.T) {
 				expires: &future,
 			}},
 		},
+		{
+			desc: "set command with expiry in milliseconds",
+			data: "*5\r\n$3\r\nset\r\n$4\r\nName\r\n$4\r\nJohn\r\n$2\r\npx\r\n$4\r\n2000\r\n",
+			want: []byte("+OK\r\n"),
+			wantState: map[string]StringValue{"Name": {
+				value:   "John",
+				expires: &future,
+			}},
+		},
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
