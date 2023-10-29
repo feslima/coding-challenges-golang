@@ -462,3 +462,101 @@ func TestExpireCommand(t *testing.T) {
 		})
 	}
 }
+
+func TestExistsCommand(t *testing.T) {
+	now := time.Now()
+
+	testCases := []struct {
+		desc  string
+		data  string
+		want  []byte
+		state map[string]StringValue
+	}{
+		{
+			desc: "existing key single time",
+			data: "*2\r\n$6\r\nexists\r\n$4\r\nName\r\n",
+			want: []byte(":1\r\n"),
+			state: map[string]StringValue{"Name": {
+				value:   "John",
+				expires: nil,
+			}},
+		},
+		{
+			desc: "existing key repeated",
+			data: "*3\r\n$6\r\nexists\r\n$4\r\nName\r\n$4\r\nName\r\n",
+			want: []byte(":2\r\n"),
+			state: map[string]StringValue{"Name": {
+				value:   "John",
+				expires: nil,
+			}},
+		},
+		{
+			desc: "non existing key single time",
+			data: "*2\r\n$6\r\nexists\r\n$4\r\nNone\r\n",
+			want: []byte(":0\r\n"),
+			state: map[string]StringValue{"Name": {
+				value:   "John",
+				expires: nil,
+			}},
+		},
+		{
+			desc: "existing and non existing keys single time",
+			data: "*3\r\n$6\r\nexists\r\n$4\r\nName\r\n$4\r\nNone\r\n",
+			want: []byte(":1\r\n"),
+			state: map[string]StringValue{"Name": {
+				value:   "John",
+				expires: nil,
+			}},
+		},
+		{
+			desc: "existing repeated and non existing single time",
+			data: "*4\r\n$6\r\nexists\r\n$4\r\nName\r\n$4\r\nNone\r\n$4\r\nName\r\n",
+			want: []byte(":2\r\n"),
+			state: map[string]StringValue{"Name": {
+				value:   "John",
+				expires: nil,
+			}},
+		},
+		{
+			desc: "existing single time and non existing repeated",
+			data: "*4\r\n$6\r\nexists\r\n$4\r\nName\r\n$4\r\nNone\r\n$4\r\nNone\r\n",
+			want: []byte(":1\r\n"),
+			state: map[string]StringValue{"Name": {
+				value:   "John",
+				expires: nil,
+			}},
+		},
+		{
+			desc: "existing repeated and non existing repeated",
+			data: "*5\r\n$6\r\nexists\r\n$4\r\nName\r\n$4\r\nNone\r\n$4\r\nName\r\n$4\r\nNone\r\n",
+			want: []byte(":2\r\n"),
+			state: map[string]StringValue{"Name": {
+				value:   "John",
+				expires: nil,
+			}},
+		},
+	}
+	for _, tC := range testCases {
+		t.Run(tC.desc, func(t *testing.T) {
+			connection := NewConnection(tC.data)
+			timer := TestClockTimer{mockNow: now}
+			logger := NewTestLogger()
+			app := NewApplication(nil, timer, logger)
+			app.state.stringMap = tC.state
+
+			messenger := handleRequests(app.ProcessRequest, logger)
+			ProcessConnection(connection, &messenger, logger)
+			messenger.Cancel()
+
+			got := connection.response
+
+			if connection.closeCallCount != 1 {
+				t.Errorf("connection not closed properly. Call count %d", connection.closeCallCount)
+			}
+
+			if !reflect.DeepEqual(got, tC.want) {
+				t.Errorf("got: %#v. want: %#v", string(got), string(tC.want))
+			}
+		})
+	}
+}

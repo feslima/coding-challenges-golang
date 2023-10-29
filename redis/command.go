@@ -17,6 +17,7 @@ const (
 	GET    = "GET"
 	CONFIG = "CONFIG"
 	EXPIRE = "EXPIRE"
+	EXISTS = "EXISTS"
 )
 
 var cmdParseTable = map[string]Command{
@@ -26,6 +27,7 @@ var cmdParseTable = map[string]Command{
 	"get":    GET,
 	"config": CONFIG,
 	"expire": EXPIRE,
+	"exists": EXISTS,
 }
 
 func (c *Cmd) Parse() error {
@@ -68,6 +70,9 @@ func (c *Cmd) Process(a *Application) (string, error) {
 
 	case EXPIRE:
 		return processExpire(c.args, a)
+
+	case EXISTS:
+		return processExists(c.args, a)
 	}
 }
 
@@ -219,4 +224,35 @@ func processExpire(args []string, app *Application) (string, error) {
 	app.state.mutex.Unlock()
 
 	return SerializeInteger(1), nil
+}
+
+func processExists(args []string, app *Application) (string, error) {
+	if len(args) < 1 {
+		return "", errors.New("wrong number of arguments.")
+	}
+
+	keyCount := map[string]int{}
+	app.state.mutex.RLock()
+	for _, key := range args {
+		_, ok := app.state.stringMap[key]
+		_, kcOk := keyCount[key]
+		if ok {
+			if kcOk {
+				keyCount[key] += 1
+			} else {
+				keyCount[key] = 1
+			}
+		} else {
+			keyCount[key] = 0
+		}
+	}
+	app.state.mutex.RUnlock()
+
+	finalCount := 0
+	for _, c := range keyCount {
+		if c > 0 {
+			finalCount += c
+		}
+	}
+	return SerializeInteger(finalCount), nil
 }
