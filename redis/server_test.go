@@ -136,7 +136,7 @@ func TestSetCommand(t *testing.T) {
 		{
 			desc: "set command",
 			data: "*3\r\n$3\r\nset\r\n$4\r\nName\r\n$4\r\nJohn\r\n",
-			want: []byte("+OK\r\n"),
+			want: []byte(OK_SIMPLE_STRING),
 			wantState: map[string]StringValue{"Name": {
 				value:   "John",
 				expires: nil,
@@ -234,7 +234,7 @@ func TestSetWithExpiryCommand(t *testing.T) {
 		{
 			desc: "set command with expiry in seconds",
 			data: "*5\r\n$3\r\nset\r\n$4\r\nName\r\n$4\r\nJohn\r\n$2\r\nex\r\n$1\r\n2\r\n",
-			want: []byte("+OK\r\n"),
+			want: []byte(OK_SIMPLE_STRING),
 			wantState: map[string]StringValue{"Name": {
 				value:   "John",
 				expires: &future,
@@ -243,7 +243,7 @@ func TestSetWithExpiryCommand(t *testing.T) {
 		{
 			desc: "set command with expiry in milliseconds",
 			data: "*5\r\n$3\r\nset\r\n$4\r\nName\r\n$4\r\nJohn\r\n$2\r\npx\r\n$4\r\n2000\r\n",
-			want: []byte("+OK\r\n"),
+			want: []byte(OK_SIMPLE_STRING),
 			wantState: map[string]StringValue{"Name": {
 				value:   "John",
 				expires: &future,
@@ -280,6 +280,77 @@ func TestSetWithExpiryCommand(t *testing.T) {
 
 			if *gotString.expires != *wantString.expires {
 				t.Errorf("got: %#v. want: %#v", *gotString.expires, *wantString.expires)
+			}
+		})
+	}
+}
+
+func TestActiveKeyExpirationTable(t *testing.T) {
+	now := time.Now()
+	getFuture := func(delta int) *time.Time {
+		future := now.Add(time.Duration(delta) * time.Second)
+		return &future
+	}
+
+	testCases := []struct {
+		desc           string
+		data           string
+		want           []byte
+		expectedDelete bool
+		expires        *time.Time
+	}{
+		{
+			desc:           "should delete key if it is expired on get",
+			data:           "*2\r\n$3\r\nget\r\n$4\r\nName\r\n",
+			want:           []byte(NIL_BULK_STRING),
+			expectedDelete: true,
+			expires:        getFuture(-2),
+		},
+		{
+			desc:           "should not delete key if it is not expired on get",
+			data:           "*2\r\n$3\r\nget\r\n$4\r\nName\r\n",
+			want:           []byte("$4\r\nJohn\r\n"),
+			expectedDelete: false,
+			expires:        getFuture(2),
+		},
+	}
+	for _, tC := range testCases {
+		t.Run(tC.desc, func(t *testing.T) {
+
+			initialState := map[string]StringValue{"Name": {
+				value:   "John",
+				expires: tC.expires,
+			}}
+
+			timer := TestClockTimer{mockNow: now}
+			app := NewApplication(nil, timer)
+			app.state.stringMap = initialState
+
+			connection := NewConnection("*2\r\n$3\r\nget\r\n$4\r\nName\r\n")
+			messenger := handleRequests(app.ProcessRequest)
+			ProcessConnection(connection, &messenger)
+			messenger.Cancel()
+
+			got := connection.response
+
+			if connection.closeCallCount != 1 {
+				t.Errorf("connection not closed properly. Call count %d", connection.closeCallCount)
+			}
+
+			want := tC.want
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("got: %#v. want: %#v", string(got), string(want))
+			}
+
+			gotState := app.state.stringMap
+			_, exists := gotState["Name"]
+
+			if tC.expectedDelete && exists {
+				t.Error("The key must not exist")
+			}
+
+			if !tC.expectedDelete && !exists {
+				t.Error("The key must exist")
 			}
 		})
 	}

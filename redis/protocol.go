@@ -15,6 +15,7 @@ const (
 )
 
 const NIL_BULK_STRING = "$-1\r\n"
+const OK_SIMPLE_STRING = "+OK\r\n"
 
 func getFirstCRIndex(raw []byte) int64 {
 	crIndex := int64(0)

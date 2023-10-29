@@ -116,7 +116,7 @@ func processSet(args []string, app *Application) (string, error) {
 	state := app.state.stringMap
 	state[key] = StringValue{value: value, expires: expiry}
 
-	return SerializeSimpleString("OK"), nil
+	return OK_SIMPLE_STRING, nil
 }
 
 func processGet(args []string, app *Application) (string, error) {
@@ -124,8 +124,14 @@ func processGet(args []string, app *Application) (string, error) {
 		return "", errors.New("wrong number of arguments.")
 	}
 
-	sv, ok := app.state.stringMap[args[0]]
+	key := args[0]
+	sv, ok := app.state.stringMap[key]
 	if !ok {
+		return NIL_BULK_STRING, nil
+	}
+
+	if sv.expires != nil && app.state.clock.Now().After(*sv.expires) {
+		delete(app.state.stringMap, key)
 		return NIL_BULK_STRING, nil
 	}
 
