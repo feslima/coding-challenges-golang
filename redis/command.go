@@ -140,7 +140,9 @@ func processGet(args []string, app *Application) (string, error) {
 	}
 
 	if sv.expires != nil && app.clock.Now().After(*sv.expires) {
+		app.state.mutex.Lock()
 		delete(app.state.stringMap, key)
+		app.state.mutex.Unlock()
 		return NIL_BULK_STRING, nil
 	}
 
