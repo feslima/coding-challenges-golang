@@ -9,18 +9,18 @@ import (
 	"net"
 )
 
-func NewServer(host string, port string) (net.Listener, error) {
+func NewServer(host string, port string, l *slog.Logger) (net.Listener, error) {
 	server, err := net.Listen("tcp", host+":"+port)
 	if err != nil {
 		return nil, err
 	}
-	slog.Info("Initialized server " + host + ":" + port)
+	l.Info("Initialized server " + host + ":" + port)
 	return server, err
 }
 
 type ConnectionHandler func([]byte) ([]byte, error)
 
-func handleRequests(h ConnectionHandler) messenger {
+func handleRequests(h ConnectionHandler, l *slog.Logger) messenger {
 	messenger := messenger{
 		in:   make(chan []byte),
 		out:  make(chan []byte),
@@ -30,7 +30,7 @@ func handleRequests(h ConnectionHandler) messenger {
 		for raw := range messenger.in {
 			result, err := h(raw)
 			if err != nil {
-				slog.Error(fmt.Sprintf("%v", err))
+				l.Error(fmt.Sprintf("%v", err))
 				messenger.out <- errorResponse
 				continue
 			}
@@ -41,18 +41,18 @@ func handleRequests(h ConnectionHandler) messenger {
 	return messenger
 }
 
-func Listen(server net.Listener, handler ConnectionHandler) error {
+func Listen(server net.Listener, handler ConnectionHandler, l *slog.Logger) error {
 	defer server.Close()
 
-	messenger := handleRequests(handler)
+	messenger := handleRequests(handler, l)
 	for {
 		conn, err := server.Accept()
 		if err != nil {
-			slog.Error("failed to accept connection")
+			l.Error("failed to accept connection")
 			return err
 		}
 
-		go ProcessConnection(conn, &messenger)
+		go ProcessConnection(conn, &messenger, l)
 	}
 }
 
@@ -68,7 +68,7 @@ func (m *messenger) Cancel() func() {
 	return func() { close(m.done) }
 }
 
-func ProcessConnection(conn net.Conn, m *messenger) {
+func ProcessConnection(conn net.Conn, m *messenger, l *slog.Logger) {
 	defer conn.Close()
 	reader := bufio.NewReader(conn)
 	buf := make([]byte, reader.Size())
@@ -77,21 +77,21 @@ func ProcessConnection(conn net.Conn, m *messenger) {
 		n, err := reader.Read(buf)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				slog.Debug("EOF error. Client disconnected. No more data to read.")
+				l.Debug("EOF error. Client disconnected. No more data to read.")
 				break
 			}
 
-			slog.Error("failed to read bytes: " + fmt.Sprintf("%v", err))
+			l.Error("failed to read bytes: " + fmt.Sprintf("%v", err))
 			_, err = conn.Write(errorResponse)
 			if err != nil {
-				slog.Error("failed to write error response")
+				l.Error("failed to write error response")
 			}
 
 			continue
 		}
 
 		read := buf[:n]
-		slog.Debug("received: " + string(read))
+		l.Debug("received: " + string(read))
 
 		select {
 		case <-m.done:
@@ -102,7 +102,7 @@ func ProcessConnection(conn net.Conn, m *messenger) {
 		for result := range m.out {
 			_, err := conn.Write(result)
 			if err != nil {
-				slog.Error("failed to write error response")
+				l.Error("failed to write error response")
 			}
 			break
 		}

@@ -112,7 +112,7 @@ func processSet(args []string, app *Application) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		final := app.state.clock.Now().Add(time.Duration(delta) * resolutionType)
+		final := app.clock.Now().Add(time.Duration(delta) * resolutionType)
 		expiry = &final
 	} else {
 		expiry = nil
@@ -139,7 +139,7 @@ func processGet(args []string, app *Application) (string, error) {
 		return NIL_BULK_STRING, nil
 	}
 
-	if sv.expires != nil && app.state.clock.Now().After(*sv.expires) {
+	if sv.expires != nil && app.clock.Now().After(*sv.expires) {
 		delete(app.state.stringMap, key)
 		return NIL_BULK_STRING, nil
 	}
@@ -204,7 +204,7 @@ func processExpire(args []string, app *Application) (string, error) {
 
 	var final time.Time
 	if sv.expires == nil {
-		final = app.state.clock.Now().Add(time.Duration(delta) * time.Second)
+		final = app.clock.Now().Add(time.Duration(delta) * time.Second)
 	} else {
 		// update by adding time to key expiry
 		final = sv.expires.Add(time.Duration(delta) * time.Second)

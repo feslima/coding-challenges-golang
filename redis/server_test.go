@@ -2,12 +2,24 @@ package redis
 
 import (
 	"bufio"
+	"bytes"
+	"log/slog"
 	"net"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 )
+
+var testLogOpts = slog.HandlerOptions{
+	Level: slog.LevelDebug,
+}
+
+func NewTestLogger() *slog.Logger {
+	logBuf := bytes.NewBuffer(make([]byte, 1024))
+	logHandler := slog.NewTextHandler(logBuf, &testLogOpts)
+	return slog.New(logHandler)
+}
 
 type TestClockTimer struct {
 	mockNow time.Time
@@ -105,10 +117,11 @@ func TestReadonlyCommands(t *testing.T) {
 		t.Run(tC.desc, func(t *testing.T) {
 			connection := NewConnection(tC.data)
 			timer := TestClockTimer{mockNow: time.Now()}
-			app := NewApplication(nil, timer)
+			logger := NewTestLogger()
+			app := NewApplication(nil, timer, logger)
 
-			messenger := handleRequests(app.ProcessRequest)
-			ProcessConnection(connection, &messenger)
+			messenger := handleRequests(app.ProcessRequest, logger)
+			ProcessConnection(connection, &messenger, logger)
 			messenger.Cancel()
 
 			got := connection.response
@@ -153,10 +166,11 @@ func TestSetCommand(t *testing.T) {
 		t.Run(tC.desc, func(t *testing.T) {
 			connection := NewConnection(tC.data)
 			timer := TestClockTimer{mockNow: now}
-			app := NewApplication(nil, timer)
+			logger := NewTestLogger()
+			app := NewApplication(nil, timer, logger)
 
-			messenger := handleRequests(app.ProcessRequest)
-			ProcessConnection(connection, &messenger)
+			messenger := handleRequests(app.ProcessRequest, logger)
+			ProcessConnection(connection, &messenger, logger)
 			messenger.Cancel()
 
 			got := connection.response
@@ -201,11 +215,12 @@ func TestGetCommand(t *testing.T) {
 		t.Run(tC.desc, func(t *testing.T) {
 			connection := NewConnection(tC.data)
 			timer := TestClockTimer{mockNow: time.Now()}
-			app := NewApplication(nil, timer)
+			logger := NewTestLogger()
+			app := NewApplication(nil, timer, logger)
 			app.state.stringMap = tC.state
 
-			messenger := handleRequests(app.ProcessRequest)
-			ProcessConnection(connection, &messenger)
+			messenger := handleRequests(app.ProcessRequest, logger)
+			ProcessConnection(connection, &messenger, logger)
 			messenger.Cancel()
 
 			got := connection.response
@@ -254,10 +269,11 @@ func TestSetWithExpiryCommand(t *testing.T) {
 		t.Run(tC.desc, func(t *testing.T) {
 			connection := NewConnection(tC.data)
 			timer := TestClockTimer{mockNow: now}
-			app := NewApplication(nil, timer)
+			logger := NewTestLogger()
+			app := NewApplication(nil, timer, logger)
 
-			messenger := handleRequests(app.ProcessRequest)
-			ProcessConnection(connection, &messenger)
+			messenger := handleRequests(app.ProcessRequest, logger)
+			ProcessConnection(connection, &messenger, logger)
 			messenger.Cancel()
 
 			got := connection.response
@@ -316,19 +332,19 @@ func TestActiveKeyExpirationTable(t *testing.T) {
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-
 			initialState := map[string]StringValue{"Name": {
 				value:   "John",
 				expires: tC.expires,
 			}}
 
 			timer := TestClockTimer{mockNow: now}
-			app := NewApplication(nil, timer)
+			logger := NewTestLogger()
+			app := NewApplication(nil, timer, logger)
 			app.state.stringMap = initialState
 
 			connection := NewConnection("*2\r\n$3\r\nget\r\n$4\r\nName\r\n")
-			messenger := handleRequests(app.ProcessRequest)
-			ProcessConnection(connection, &messenger)
+			messenger := handleRequests(app.ProcessRequest, logger)
+			ProcessConnection(connection, &messenger, logger)
 			messenger.Cancel()
 
 			got := connection.response
@@ -412,12 +428,13 @@ func TestExpireCommand(t *testing.T) {
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
 			timer := TestClockTimer{mockNow: now}
-			app := NewApplication(nil, timer)
+			logger := NewTestLogger()
+			app := NewApplication(nil, timer, logger)
 			app.state.stringMap = tC.initialState
 
 			connection := NewConnection(tC.data)
-			messenger := handleRequests(app.ProcessRequest)
-			ProcessConnection(connection, &messenger)
+			messenger := handleRequests(app.ProcessRequest, logger)
+			ProcessConnection(connection, &messenger, logger)
 			messenger.Cancel()
 
 			got := connection.response
