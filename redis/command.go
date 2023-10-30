@@ -18,6 +18,7 @@ const (
 	CONFIG = "CONFIG"
 	EXPIRE = "EXPIRE"
 	EXISTS = "EXISTS"
+	DEL    = "DEL"
 )
 
 var cmdParseTable = map[string]Command{
@@ -28,6 +29,7 @@ var cmdParseTable = map[string]Command{
 	"config": CONFIG,
 	"expire": EXPIRE,
 	"exists": EXISTS,
+	"del":    DEL,
 }
 
 func (c *Cmd) Parse() error {
@@ -73,6 +75,9 @@ func (c *Cmd) Process(a *Application) (string, error) {
 
 	case EXISTS:
 		return processExists(c.args, a)
+
+	case DEL:
+		return processDelete(c.args, a)
 	}
 }
 
@@ -247,6 +252,42 @@ func processExists(args []string, app *Application) (string, error) {
 		}
 	}
 	app.state.mutex.RUnlock()
+
+	finalCount := 0
+	for _, c := range keyCount {
+		if c > 0 {
+			finalCount += c
+		}
+	}
+	return SerializeInteger(finalCount), nil
+}
+
+func processDelete(args []string, app *Application) (string, error) {
+	if len(args) < 1 {
+		return "", errors.New("wrong number of arguments.")
+	}
+
+	keyCount := map[string]int{}
+	app.state.mutex.Lock()
+	sm := app.state.stringMap
+	for _, key := range args {
+		_, ok := sm[key]
+		_, kcOk := keyCount[key]
+		if ok {
+			if kcOk {
+				keyCount[key] += 1
+			} else {
+				keyCount[key] = 1
+			}
+		} else {
+			if !kcOk {
+				keyCount[key] = 0
+			}
+		}
+
+		delete(sm, key)
+	}
+	app.state.mutex.Unlock()
 
 	finalCount := 0
 	for _, c := range keyCount {

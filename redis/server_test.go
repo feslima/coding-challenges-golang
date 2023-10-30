@@ -560,3 +560,140 @@ func TestExistsCommand(t *testing.T) {
 		})
 	}
 }
+
+func TestDeleteCommand(t *testing.T) {
+	now := time.Now()
+
+	testCases := []struct {
+		desc         string
+		data         string
+		want         []byte
+		initialState map[string]StringValue
+		wantState    map[string]StringValue
+	}{
+		{
+			desc: "delete existing key single time",
+			data: "*2\r\n$3\r\ndel\r\n$4\r\nName\r\n",
+			want: []byte(":1\r\n"),
+			initialState: map[string]StringValue{"Name": {
+				value:   "John",
+				expires: nil,
+			}},
+			wantState: map[string]StringValue{},
+		},
+		{
+			desc: "delete existing key repeated",
+			data: "*3\r\n$3\r\ndel\r\n$4\r\nName\r\n$4\r\nName\r\n",
+			want: []byte(":1\r\n"),
+			initialState: map[string]StringValue{"Name": {
+				value:   "John",
+				expires: nil,
+			}},
+			wantState: map[string]StringValue{},
+		},
+		{
+			desc: "delete non existing key single time",
+			data: "*2\r\n$3\r\ndel\r\n$4\r\nNone\r\n",
+			want: []byte(":0\r\n"),
+			initialState: map[string]StringValue{"Name": {
+				value:   "John",
+				expires: nil,
+			}},
+			wantState: map[string]StringValue{"Name": {
+				value:   "John",
+				expires: nil,
+			}},
+		},
+		{
+			desc: "delete existing and non existing keys single time",
+			data: "*3\r\n$3\r\ndel\r\n$4\r\nName\r\n$4\r\nNone\r\n",
+			want: []byte(":1\r\n"),
+			initialState: map[string]StringValue{"Name": {
+				value:   "John",
+				expires: nil,
+			}},
+			wantState: map[string]StringValue{},
+		},
+		{
+			desc: "delete existing repeated and non existing single time",
+			data: "*4\r\n$3\r\ndel\r\n$4\r\nName\r\n$4\r\nNone\r\n$4\r\nName\r\n",
+			want: []byte(":1\r\n"),
+			initialState: map[string]StringValue{"Name": {
+				value:   "John",
+				expires: nil,
+			}},
+			wantState: map[string]StringValue{},
+		},
+		{
+			desc: "delete existing single time and non existing repeated",
+			data: "*4\r\n$3\r\ndel\r\n$4\r\nName\r\n$4\r\nNone\r\n$4\r\nNone\r\n",
+			want: []byte(":1\r\n"),
+			initialState: map[string]StringValue{"Name": {
+				value:   "John",
+				expires: nil,
+			}},
+			wantState: map[string]StringValue{},
+		},
+		{
+			desc: "existing repeated and non existing repeated",
+			data: "*5\r\n$3\r\ndel\r\n$4\r\nName\r\n$4\r\nNone\r\n$4\r\nName\r\n$4\r\nNone\r\n",
+			want: []byte(":1\r\n"),
+			initialState: map[string]StringValue{"Name": {
+				value:   "John",
+				expires: nil,
+			}},
+			wantState: map[string]StringValue{},
+		},
+		{
+			desc: "delete multiple existing keys",
+			data: "*3\r\n$3\r\ndel\r\n$4\r\nName\r\n$5\r\nName2\r\n",
+			want: []byte(":2\r\n"),
+			initialState: map[string]StringValue{
+				"Name": {
+					value:   "John",
+					expires: nil,
+				},
+				"Name2": {
+					value:   "John",
+					expires: nil,
+				},
+				"Name3": {
+					value:   "John",
+					expires: nil,
+				},
+			},
+			wantState: map[string]StringValue{"Name3": {
+				value:   "John",
+				expires: nil,
+			}},
+		},
+	}
+	for _, tC := range testCases {
+		t.Run(tC.desc, func(t *testing.T) {
+			connection := NewConnection(tC.data)
+			timer := TestClockTimer{mockNow: now}
+			logger := NewTestLogger()
+			app := NewApplication(nil, timer, logger)
+			app.state.stringMap = tC.initialState
+
+			messenger := handleRequests(app.ProcessRequest, logger)
+			ProcessConnection(connection, &messenger, logger)
+			messenger.Cancel()
+
+			got := connection.response
+
+			if connection.closeCallCount != 1 {
+				t.Errorf("connection not closed properly. Call count %d", connection.closeCallCount)
+			}
+
+			if !reflect.DeepEqual(got, tC.want) {
+				t.Fatalf("got: %#v. want: %#v", string(got), string(tC.want))
+			}
+
+			gotState := app.state.stringMap
+			if !reflect.DeepEqual(gotState, tC.wantState) {
+				t.Fatalf("got: %#v. want: %#v", gotState, tC.wantState)
+			}
+		})
+	}
+}
