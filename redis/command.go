@@ -20,6 +20,7 @@ const (
 	EXISTS = "EXISTS"
 	DEL    = "DEL"
 	INCR   = "INCR"
+	DECR   = "DECR"
 )
 
 var cmdParseTable = map[string]Command{
@@ -32,6 +33,7 @@ var cmdParseTable = map[string]Command{
 	"exists": EXISTS,
 	"del":    DEL,
 	"incr":   INCR,
+	"decr":   DECR,
 }
 
 func (c *Cmd) Parse() error {
@@ -83,6 +85,9 @@ func (c *Cmd) Process(a *Application) (string, error) {
 
 	case INCR:
 		return processIncrement(c.args, a)
+
+	case DECR:
+		return processDecrement(c.args, a)
 	}
 }
 
@@ -325,6 +330,36 @@ func processIncrement(args []string, app *Application) (string, error) {
 	}
 
 	value = int(intVal) + 1
+	strVal.value = fmt.Sprintf("%d", value)
+	app.state.stringMap[key] = strVal
+	app.state.mutex.Unlock()
+
+	return SerializeInteger(value), nil
+
+}
+
+func processDecrement(args []string, app *Application) (string, error) {
+	if len(args) != 1 {
+		return "", errors.New("wrong number of arguments.")
+	}
+
+	key := args[0]
+	value := 0
+
+	app.state.mutex.Lock()
+	strVal, ok := app.state.stringMap[key]
+	if !ok {
+		app.state.stringMap[key] = StringValue{value: "0", expires: nil}
+		app.state.mutex.Unlock()
+		return SerializeInteger(value), nil
+	}
+	intVal, err := strconv.ParseInt(strVal.value, 10, 0)
+	if err != nil {
+		app.state.mutex.Unlock()
+		return SerializeSimpleError("key cannot be parsed to integer"), nil
+	}
+
+	value = int(intVal) - 1
 	strVal.value = fmt.Sprintf("%d", value)
 	app.state.stringMap[key] = strVal
 	app.state.mutex.Unlock()

@@ -779,3 +779,85 @@ func TestIncrementCommand(t *testing.T) {
 		})
 	}
 }
+
+func TestDecrementCommand(t *testing.T) {
+	now := time.Now()
+
+	testCases := []struct {
+		desc         string
+		data         string
+		want         []byte
+		initialState map[string]StringValue
+		wantState    map[string]StringValue
+	}{
+		{
+			desc: "decrement existing key",
+			data: "*2\r\n$4\r\ndecr\r\n$4\r\nName\r\n",
+			want: []byte(":1\r\n"),
+			initialState: map[string]StringValue{
+				"Name": {
+					value:   "2",
+					expires: nil,
+				}},
+			wantState: map[string]StringValue{
+				"Name": {
+					value:   "1",
+					expires: nil,
+				}},
+		},
+		{
+			desc:         "decrement non existing key",
+			data:         "*2\r\n$4\r\ndecr\r\n$4\r\nName\r\n",
+			want:         []byte(":0\r\n"),
+			initialState: map[string]StringValue{},
+			wantState: map[string]StringValue{
+				"Name": {
+					value:   "0",
+					expires: nil,
+				}},
+		},
+		{
+			desc: "decrement non integer key",
+			data: "*2\r\n$4\r\ndecr\r\n$4\r\nName\r\n",
+			want: []byte("-key cannot be parsed to integer\r\n"),
+			initialState: map[string]StringValue{
+				"Name": {
+					value:   "not parseable",
+					expires: nil,
+				}},
+			wantState: map[string]StringValue{
+				"Name": {
+					value:   "not parseable",
+					expires: nil,
+				}},
+		},
+	}
+	for _, tC := range testCases {
+		t.Run(tC.desc, func(t *testing.T) {
+			connection := NewConnection(tC.data)
+			timer := TestClockTimer{mockNow: now}
+			logger := NewTestLogger()
+			app := NewApplication(nil, timer, logger)
+			app.state.stringMap = tC.initialState
+
+			messenger := handleRequests(app.ProcessRequest, logger)
+			ProcessConnection(connection, &messenger, logger)
+			messenger.Cancel()
+
+			got := connection.response
+
+			if connection.closeCallCount != 1 {
+				t.Errorf("connection not closed properly. Call count %d", connection.closeCallCount)
+			}
+
+			if !reflect.DeepEqual(got, tC.want) {
+				t.Fatalf("got: %#v. want: %#v", string(got), string(tC.want))
+			}
+
+			gotState := app.state.stringMap
+			if !reflect.DeepEqual(gotState, tC.wantState) {
+				t.Fatalf("got: %#v. want: %#v", gotState, tC.wantState)
+			}
+		})
+	}
+}
