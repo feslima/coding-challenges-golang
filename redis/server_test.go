@@ -861,3 +861,71 @@ func TestDecrementCommand(t *testing.T) {
 		})
 	}
 }
+
+func TestRPushCommand(t *testing.T) {
+	now := time.Now()
+
+	testCases := []struct {
+		desc         string
+		data         string
+		want         []byte
+		initialState map[string]ListValue
+		wantState    map[string]ListValue
+	}{
+		{
+			desc:         "push to non-existing key",
+			data:         "*3\r\n$5\r\nrpush\r\n$6\r\nmylist\r\n$5\r\nhello\r\n",
+			want:         []byte(":1\r\n"),
+			initialState: map[string]ListValue{},
+			wantState: map[string]ListValue{
+				"mylist": {
+					values:  []string{"hello"},
+					expires: nil,
+				}},
+		},
+		{
+			desc: "push to key keeps order",
+			data: "*5\r\n$5\r\nrpush\r\n$6\r\nmylist\r\n$5\r\nhello\r\n$5\r\nworld\r\n$4\r\ntest\r\n",
+			want: []byte(":4\r\n"),
+			initialState: map[string]ListValue{
+				"mylist": {
+					values:  []string{"hi"},
+					expires: nil,
+				},
+			},
+			wantState: map[string]ListValue{
+				"mylist": {
+					values:  []string{"hi", "hello", "world", "test"},
+					expires: nil,
+				}},
+		},
+	}
+	for _, tC := range testCases {
+		t.Run(tC.desc, func(t *testing.T) {
+			connection := NewConnection(tC.data)
+			timer := TestClockTimer{mockNow: now}
+			logger := NewTestLogger()
+			app := NewApplication(nil, timer, logger)
+			app.state.listMap = tC.initialState
+
+			messenger := handleRequests(app.ProcessRequest, logger)
+			ProcessConnection(connection, &messenger, logger)
+			messenger.Cancel()
+
+			got := connection.response
+
+			if connection.closeCallCount != 1 {
+				t.Errorf("connection not closed properly. Call count %d", connection.closeCallCount)
+			}
+
+			if !reflect.DeepEqual(got, tC.want) {
+				t.Fatalf("got: %#v. want: %#v", string(got), string(tC.want))
+			}
+
+			gotState := app.state.listMap
+			if !reflect.DeepEqual(gotState, tC.wantState) {
+				t.Fatalf("got: %#v. want: %#v", gotState, tC.wantState)
+			}
+		})
+	}
+}

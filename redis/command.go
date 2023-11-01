@@ -21,6 +21,7 @@ const (
 	DEL    = "DEL"
 	INCR   = "INCR"
 	DECR   = "DECR"
+	RPUSH  = "RPUSH"
 )
 
 var cmdParseTable = map[string]Command{
@@ -34,6 +35,7 @@ var cmdParseTable = map[string]Command{
 	"del":    DEL,
 	"incr":   INCR,
 	"decr":   DECR,
+	"rpush":  RPUSH,
 }
 
 func (c *Cmd) Parse() error {
@@ -88,6 +90,9 @@ func (c *Cmd) Process(a *Application) (string, error) {
 
 	case DECR:
 		return processDecrement(c.args, a)
+
+	case RPUSH:
+		return processRPush(c.args, a)
 	}
 }
 
@@ -365,5 +370,29 @@ func processDecrement(args []string, app *Application) (string, error) {
 	app.state.mutex.Unlock()
 
 	return SerializeInteger(value), nil
+}
 
+func processRPush(args []string, app *Application) (string, error) {
+	if len(args) < 1 {
+		return "", errors.New("wrong number of arguments.")
+	}
+
+	key := args[0]
+	values := args[1:]
+	length := 0
+
+	app.state.mutex.Lock()
+	lm := app.state.listMap
+	lVal, ok := lm[key]
+	if !ok {
+		lm[key] = ListValue{values: values, expires: nil}
+		length = len(values)
+	} else {
+		lVal.values = append(lVal.values, values...)
+		lm[key] = lVal
+		length = len(lVal.values)
+	}
+	app.state.mutex.Unlock()
+
+	return SerializeInteger(length), nil
 }

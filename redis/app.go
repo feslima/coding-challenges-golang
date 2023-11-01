@@ -60,7 +60,13 @@ type StringValue struct {
 	expires *time.Time
 }
 
+type ListValue struct {
+	values  []string
+	expires *time.Time
+}
+
 type ApplicationState struct {
+	listMap   map[string]ListValue
 	stringMap map[string]StringValue
 	mutex     *sync.RWMutex
 }
