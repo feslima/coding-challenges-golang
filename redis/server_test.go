@@ -95,7 +95,7 @@ func TestReadonlyCommands(t *testing.T) {
 		{
 			desc: "invalid ping command",
 			data: "*1\r\n$4\r\npang\r\n",
-			want: errorResponse,
+			want: []byte("-invalid command: 'pang'\r\n"),
 		},
 		{
 			desc: "echo command",
@@ -110,7 +110,7 @@ func TestReadonlyCommands(t *testing.T) {
 		{
 			desc: "invalid echo command",
 			data: "*1\r\n$4\r\necho\r\n",
-			want: errorResponse,
+			want: []byte("-wrong number of arguments.\r\n"),
 		},
 	}
 	for _, tC := range testCases {
@@ -158,7 +158,7 @@ func TestSetCommand(t *testing.T) {
 		{
 			desc:      "invalid set command",
 			data:      "*3\r\n$2\r\nst\r\n$4\r\nName\r\n$4\r\nJohn\r\n",
-			want:      errorResponse,
+			want:      []byte("-invalid command: 'st'\r\n"),
 			wantState: map[string]StringValue{},
 		},
 	}

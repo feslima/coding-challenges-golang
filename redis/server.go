@@ -31,7 +31,7 @@ func handleRequests(h ConnectionHandler, l *slog.Logger) messenger {
 			result, err := h(raw)
 			if err != nil {
 				l.Error(fmt.Sprintf("%v", err))
-				messenger.out <- errorResponse
+				messenger.out <- []byte(SerializeSimpleError(err.Error()))
 				continue
 			}
 			messenger.out <- result
