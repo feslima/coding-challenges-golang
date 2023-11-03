@@ -28,9 +28,10 @@ type Application struct {
 }
 
 func NewApplication(config *ApplicationConfiguration, timer ClockTimer, l *slog.Logger) *Application {
+	mutex := &sync.RWMutex{}
 	state := ApplicationState{
-		stringMap: make(map[string]StringValue),
-		mutex:     &sync.RWMutex{},
+		keyspace: *newKeyspace(timer, mutex),
+		mutex:    mutex,
 	}
 	return &Application{
 		state:  &state,
@@ -55,37 +56,22 @@ func (app *Application) ProcessRequest(raw []byte) ([]byte, error) {
 	return []byte(response), nil
 }
 
-type StringValue struct {
-	value   string
-	expires *time.Time
-}
-
-type ListValue struct {
-	values  []string
-	expires *time.Time
-}
-
 type ApplicationState struct {
-	listMap   map[string]ListValue
-	stringMap map[string]StringValue
-	mutex     *sync.RWMutex
+	mutex    *sync.RWMutex
+	keyspace keyspace
 }
 
 func CheckAndExpireKeys(app *Application) {
 	state := app.state
 	state.mutex.RLock()
-	keys := GetKeys(state.stringMap, func(sv StringValue) bool { return CheckIsExpired(app.clock, sv) })
+	keys := GetKeys(state.keyspace.keys, func(ke keyspaceEntry) bool { return CheckIsExpired(app.clock, ke) })
 	state.mutex.RUnlock()
 
 	nKeys := len(keys)
 	if nKeys != 0 {
 		app.logger.Info(fmt.Sprintf("deleting %d expired keys", nKeys))
 
-		state.mutex.Lock()
-		for _, key := range keys {
-			delete(state.stringMap, key)
-		}
-		state.mutex.Unlock()
+		app.state.keyspace.BulkDelete(keys)
 	}
 }
 
@@ -100,15 +86,6 @@ func GetKeys[K comparable, V any](m map[K]V, filter func(V) bool) []K {
 	}
 
 	return keys
-}
-
-func CheckIsExpired(c ClockTimer, sv StringValue) bool {
-	if sv.expires == nil {
-		return false
-	}
-
-	expires := *sv.expires
-	return c.Now().After(expires)
 }
 
 var validSaveOptions map[string]bool = map[string]bool{"yes": true, "no": true}

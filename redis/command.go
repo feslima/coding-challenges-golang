@@ -119,34 +119,30 @@ func processSet(args []string, app *Application) (string, error) {
 	key := args[0]
 	value := args[1]
 
-	var expiry *time.Time
+	var expiry *ExpiryDuration
 	if nArgs > 2 {
-		resolution := strings.ToUpper(args[2])
-		if resolution != "EX" && resolution != "PX" {
+		resolutionType := strings.ToUpper(args[2])
+		if resolutionType != "EX" && resolutionType != "PX" {
 			return "", errors.New("invalid resolution type")
 		}
 
-		var resolutionType time.Duration
-		if resolution == "EX" {
-			resolutionType = time.Second
+		var resolution time.Duration
+		if resolutionType == "EX" {
+			resolution = time.Second
 		} else {
-			resolutionType = time.Millisecond
+			resolution = time.Millisecond
 		}
 
 		delta, err := strconv.ParseInt(args[3], 10, 0)
 		if err != nil {
 			return "", err
 		}
-		final := app.clock.Now().Add(time.Duration(delta) * resolutionType)
-		expiry = &final
+		expiry = &ExpiryDuration{magnitude: delta, resolution: resolution}
 	} else {
 		expiry = nil
 	}
 
-	app.state.mutex.Lock()
-	state := app.state.stringMap
-	state[key] = StringValue{value: value, expires: expiry}
-	app.state.mutex.Unlock()
+	app.state.keyspace.SetKey(key, value, expiry)
 
 	return OK_SIMPLE_STRING, nil
 }
@@ -157,21 +153,12 @@ func processGet(args []string, app *Application) (string, error) {
 	}
 
 	key := args[0]
-	app.state.mutex.RLock()
-	sv, ok := app.state.stringMap[key]
-	app.state.mutex.RUnlock()
-	if !ok {
+	k := app.state.keyspace.Get(key)
+	if !k.IsValid() || !k.IsString() {
 		return NIL_BULK_STRING, nil
 	}
 
-	if sv.expires != nil && app.clock.Now().After(*sv.expires) {
-		app.state.mutex.Lock()
-		delete(app.state.stringMap, key)
-		app.state.mutex.Unlock()
-		return NIL_BULK_STRING, nil
-	}
-
-	return SerializeBulkString(sv.value), nil
+	return SerializeBulkString(*k.str), nil
 }
 
 func processConfig(args []string, app *Application) (string, error) {
@@ -216,32 +203,18 @@ func processExpire(args []string, app *Application) (string, error) {
 	}
 
 	key := args[0]
-	app.state.mutex.RLock()
-	sv, ok := app.state.stringMap[key]
-	app.state.mutex.RUnlock()
+	rawDelta := args[1]
+
+	delta, err := strconv.ParseInt(rawDelta, 10, 0)
+	if err != nil {
+		msg := fmt.Sprintf("could not parse '%s' to integer", rawDelta)
+		return SerializeSimpleError(msg), nil
+	}
+
+	ok := app.state.keyspace.Expire(key, delta)
 	if !ok {
 		return SerializeInteger(0), nil
 	}
-
-	value := args[1]
-	delta, err := strconv.ParseInt(value, 10, 0)
-	if err != nil {
-		return "", err
-	}
-
-	var final time.Time
-	if sv.expires == nil {
-		final = app.clock.Now().Add(time.Duration(delta) * time.Second)
-	} else {
-		// update by adding time to key expiry
-		final = sv.expires.Add(time.Duration(delta) * time.Second)
-	}
-
-	sv.expires = &final
-
-	app.state.mutex.Lock()
-	app.state.stringMap[key] = sv
-	app.state.mutex.Unlock()
 
 	return SerializeInteger(1), nil
 }
@@ -251,22 +224,7 @@ func processExists(args []string, app *Application) (string, error) {
 		return "", errors.New("wrong number of arguments.")
 	}
 
-	keyCount := map[string]int{}
-	app.state.mutex.RLock()
-	for _, key := range args {
-		_, ok := app.state.stringMap[key]
-		_, kcOk := keyCount[key]
-		if ok {
-			if kcOk {
-				keyCount[key] += 1
-			} else {
-				keyCount[key] = 1
-			}
-		} else {
-			keyCount[key] = 0
-		}
-	}
-	app.state.mutex.RUnlock()
+	keyCount := app.state.keyspace.BulkExists(args)
 
 	finalCount := 0
 	for _, c := range keyCount {
@@ -282,27 +240,7 @@ func processDelete(args []string, app *Application) (string, error) {
 		return "", errors.New("wrong number of arguments.")
 	}
 
-	keyCount := map[string]int{}
-	app.state.mutex.Lock()
-	sm := app.state.stringMap
-	for _, key := range args {
-		_, ok := sm[key]
-		_, kcOk := keyCount[key]
-		if ok {
-			if kcOk {
-				keyCount[key] += 1
-			} else {
-				keyCount[key] = 1
-			}
-		} else {
-			if !kcOk {
-				keyCount[key] = 0
-			}
-		}
-
-		delete(sm, key)
-	}
-	app.state.mutex.Unlock()
+	keyCount := app.state.keyspace.BulkDelete(args)
 
 	finalCount := 0
 	for _, c := range keyCount {
@@ -319,28 +257,12 @@ func processIncrement(args []string, app *Application) (string, error) {
 	}
 
 	key := args[0]
-	value := 0
-
-	app.state.mutex.Lock()
-	strVal, ok := app.state.stringMap[key]
-	if !ok {
-		app.state.stringMap[key] = StringValue{value: "0", expires: nil}
-		app.state.mutex.Unlock()
-		return SerializeInteger(value), nil
-	}
-	intVal, err := strconv.ParseInt(strVal.value, 10, 0)
+	value, err := app.state.keyspace.IncrementBy(key, 1)
 	if err != nil {
-		app.state.mutex.Unlock()
-		return SerializeSimpleError("key cannot be parsed to integer"), nil
+		return SerializeSimpleError(err.Error()), nil
 	}
-
-	value = int(intVal) + 1
-	strVal.value = fmt.Sprintf("%d", value)
-	app.state.stringMap[key] = strVal
-	app.state.mutex.Unlock()
 
 	return SerializeInteger(value), nil
-
 }
 
 func processDecrement(args []string, app *Application) (string, error) {
@@ -349,25 +271,10 @@ func processDecrement(args []string, app *Application) (string, error) {
 	}
 
 	key := args[0]
-	value := 0
-
-	app.state.mutex.Lock()
-	strVal, ok := app.state.stringMap[key]
-	if !ok {
-		app.state.stringMap[key] = StringValue{value: "0", expires: nil}
-		app.state.mutex.Unlock()
-		return SerializeInteger(value), nil
-	}
-	intVal, err := strconv.ParseInt(strVal.value, 10, 0)
+	value, err := app.state.keyspace.IncrementBy(key, -1)
 	if err != nil {
-		app.state.mutex.Unlock()
-		return SerializeSimpleError("key cannot be parsed to integer"), nil
+		return SerializeSimpleError(err.Error()), nil
 	}
-
-	value = int(intVal) - 1
-	strVal.value = fmt.Sprintf("%d", value)
-	app.state.stringMap[key] = strVal
-	app.state.mutex.Unlock()
 
 	return SerializeInteger(value), nil
 }
@@ -379,20 +286,11 @@ func processRPush(args []string, app *Application) (string, error) {
 
 	key := args[0]
 	values := args[1:]
-	length := 0
 
-	app.state.mutex.Lock()
-	lm := app.state.listMap
-	lVal, ok := lm[key]
-	if !ok {
-		lm[key] = ListValue{values: values, expires: nil}
-		length = len(values)
-	} else {
-		lVal.values = append(lVal.values, values...)
-		lm[key] = lVal
-		length = len(lVal.values)
+	length, err := app.state.keyspace.PushToTail(key, values)
+	if err != nil {
+		return SerializeSimpleError(err.Error()), nil
 	}
-	app.state.mutex.Unlock()
 
 	return SerializeInteger(length), nil
 }

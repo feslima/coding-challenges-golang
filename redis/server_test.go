@@ -137,328 +137,361 @@ func TestReadonlyCommands(t *testing.T) {
 	}
 }
 
+type mapState struct {
+	ks map[string]keyspaceEntry
+	sm map[string]string
+	lm map[string][]string
+}
+
+type testCase struct {
+	now          time.Time
+	desc         string
+	data         string
+	want         []byte
+	initialState mapState
+	wantState    mapState
+}
+
+func setupAppAndConnection(tC testCase) (*ConnectionTester, *Application, *slog.Logger) {
+	connection := NewConnection(tC.data)
+	timer := TestClockTimer{mockNow: tC.now}
+	logger := NewTestLogger()
+	app := NewApplication(nil, timer, logger)
+	app.state.keyspace.keys = tC.initialState.ks
+	app.state.keyspace.stringMap = tC.initialState.sm
+	app.state.keyspace.listMap = tC.initialState.lm
+
+	return connection, app, logger
+}
+
+func assertConnectionAndAppState(t *testing.T, tC testCase, connection *ConnectionTester, app *Application) {
+	got := connection.response
+
+	if connection.closeCallCount != 1 {
+		t.Errorf("connection not closed properly. Call count %d", connection.closeCallCount)
+	}
+
+	if !reflect.DeepEqual(got, tC.want) {
+		t.Errorf("got: %#v. want: %#v", string(got), string(tC.want))
+	}
+
+	gotState := app.state
+	gotKs := gotState.keyspace
+	gotSmap := gotKs.stringMap
+	gotLmap := gotKs.listMap
+
+	if !reflect.DeepEqual(gotKs.keys, tC.wantState.ks) {
+		t.Errorf("got: %#v. want: %#v", gotKs, tC.wantState.ks)
+	}
+
+	if !reflect.DeepEqual(gotSmap, tC.wantState.sm) {
+		t.Errorf("got: %#v. want: %#v", gotSmap, tC.wantState.sm)
+	}
+
+	if !reflect.DeepEqual(gotLmap, tC.wantState.lm) {
+		t.Errorf("got: %#v. want: %#v", gotLmap, tC.wantState.lm)
+	}
+}
+
 func TestSetCommand(t *testing.T) {
 	now := time.Now()
-
-	testCases := []struct {
-		desc      string
-		data      string
-		want      []byte
-		wantState map[string]StringValue
-	}{
+	testCases := []testCase{
 		{
-			desc: "set command",
-			data: "*3\r\n$3\r\nset\r\n$4\r\nName\r\n$4\r\nJohn\r\n",
-			want: []byte(OK_SIMPLE_STRING),
-			wantState: map[string]StringValue{"Name": {
-				value:   "John",
-				expires: nil,
-			}},
+			now:  now,
+			desc: "invalid set command",
+			data: "*3\r\n$2\r\nst\r\n$4\r\nName\r\n$4\r\nJohn\r\n",
+			want: []byte("-invalid command: 'st'\r\n"),
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{},
+				sm: map[string]string{},
+				lm: map[string][]string{},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{},
+				sm: map[string]string{},
+				lm: map[string][]string{},
+			},
 		},
 		{
-			desc:      "invalid set command",
-			data:      "*3\r\n$2\r\nst\r\n$4\r\nName\r\n$4\r\nJohn\r\n",
-			want:      []byte("-invalid command: 'st'\r\n"),
-			wantState: map[string]StringValue{},
+			now:  now,
+			desc: "set string key",
+			data: "*3\r\n$3\r\nset\r\n$4\r\nName\r\n$4\r\nJohn\r\n",
+			want: []byte(OK_SIMPLE_STRING),
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{},
+				sm: map[string]string{},
+				lm: map[string][]string{},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
+				sm: map[string]string{"Name": "John"},
+				lm: map[string][]string{},
+			},
+		},
+		{
+			now:  now,
+			desc: "set in existing key with list should change keyspace",
+			data: "*3\r\n$3\r\nset\r\n$4\r\nName\r\n$4\r\nJohn\r\n",
+			want: []byte(OK_SIMPLE_STRING),
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string][]string{"Name": {"John"}},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
+				sm: map[string]string{"Name": "John"},
+				lm: map[string][]string{},
+			},
 		},
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			connection := NewConnection(tC.data)
-			timer := TestClockTimer{mockNow: now}
-			logger := NewTestLogger()
-			app := NewApplication(nil, timer, logger)
+			connection, app, logger := setupAppAndConnection(tC)
 
 			messenger := handleRequests(app.ProcessRequest, logger)
 			ProcessConnection(connection, &messenger, logger)
 			messenger.Cancel()
 
-			got := connection.response
-
-			if connection.closeCallCount != 1 {
-				t.Errorf("connection not closed properly. Call count %d", connection.closeCallCount)
-			}
-
-			if !reflect.DeepEqual(got, tC.want) {
-				t.Errorf("got: %#v. want: %#v", string(got), string(tC.want))
-			}
-
-			gotState := app.state.stringMap
-			if !reflect.DeepEqual(gotState, tC.wantState) {
-				t.Errorf("got: %#v. want: %#v", gotState, tC.wantState)
-			}
+			assertConnectionAndAppState(t, tC, connection, app)
 		})
 	}
 }
 
 func TestGetCommand(t *testing.T) {
-	testCases := []struct {
-		desc  string
-		data  string
-		want  []byte
-		state map[string]StringValue
-	}{
+	now := time.Now()
+
+	testCases := []testCase{
 		{
-			desc:  "get existing string key",
-			data:  "*2\r\n$3\r\nget\r\n$4\r\nName\r\n",
-			want:  []byte("$4\r\nJohn\r\n"),
-			state: map[string]StringValue{"Name": {value: "John"}},
+			now:  now,
+			desc: "get existing string key",
+			data: "*2\r\n$3\r\nget\r\n$4\r\nName\r\n",
+			want: []byte("$4\r\nJohn\r\n"),
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
+				sm: map[string]string{"Name": "John"},
+				lm: map[string][]string{},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
+				sm: map[string]string{"Name": "John"},
+				lm: map[string][]string{},
+			},
 		},
 		{
-			desc:  "get non existing string key",
-			data:  "*2\r\n$3\r\nget\r\n$4\r\nName\r\n",
-			want:  []byte("$-1\r\n"),
-			state: map[string]StringValue{},
+			now:  now,
+			desc: "get non existing string key",
+			data: "*2\r\n$3\r\nget\r\n$4\r\nName\r\n",
+			want: []byte(NIL_BULK_STRING),
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{},
+				sm: map[string]string{},
+				lm: map[string][]string{},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{},
+				sm: map[string]string{},
+				lm: map[string][]string{},
+			},
+		},
+		{
+			now:  now,
+			desc: "get on existing list key should return as non existing",
+			data: "*2\r\n$3\r\nget\r\n$4\r\nName\r\n",
+			want: []byte(NIL_BULK_STRING),
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string][]string{"Name": {"John"}},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string][]string{"Name": {"John"}},
+			},
 		},
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			connection := NewConnection(tC.data)
-			timer := TestClockTimer{mockNow: time.Now()}
-			logger := NewTestLogger()
-			app := NewApplication(nil, timer, logger)
-			app.state.stringMap = tC.state
+			connection, app, logger := setupAppAndConnection(tC)
 
 			messenger := handleRequests(app.ProcessRequest, logger)
 			ProcessConnection(connection, &messenger, logger)
 			messenger.Cancel()
 
-			got := connection.response
-
-			if connection.closeCallCount != 1 {
-				t.Errorf("connection not closed properly. Call count %d", connection.closeCallCount)
-			}
-
-			if !reflect.DeepEqual(got, tC.want) {
-				t.Errorf("got: %#v. want: %#v", string(got), string(tC.want))
-			}
+			assertConnectionAndAppState(t, tC, connection, app)
 		})
 	}
+}
+
+func getFuture(now time.Time, delta int) *time.Time {
+	future := now.Add(time.Duration(delta) * time.Second)
+	return &future
 }
 
 func TestSetWithExpiryCommand(t *testing.T) {
 	now := time.Now()
-	future := now.Add(2 * time.Second)
+	future := getFuture(now, 2)
 
-	testCases := []struct {
-		desc      string
-		data      string
-		want      []byte
-		wantState map[string]StringValue
-	}{
+	testCases := []testCase{
 		{
+			now:  now,
 			desc: "set command with expiry in seconds",
 			data: "*5\r\n$3\r\nset\r\n$4\r\nName\r\n$4\r\nJohn\r\n$2\r\nex\r\n$1\r\n2\r\n",
 			want: []byte(OK_SIMPLE_STRING),
-			wantState: map[string]StringValue{"Name": {
-				value:   "John",
-				expires: &future,
-			}},
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{},
+				sm: map[string]string{},
+				lm: map[string][]string{},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: future}},
+				sm: map[string]string{"Name": "John"},
+				lm: map[string][]string{},
+			},
 		},
 		{
+			now:  now,
 			desc: "set command with expiry in milliseconds",
 			data: "*5\r\n$3\r\nset\r\n$4\r\nName\r\n$4\r\nJohn\r\n$2\r\npx\r\n$4\r\n2000\r\n",
 			want: []byte(OK_SIMPLE_STRING),
-			wantState: map[string]StringValue{"Name": {
-				value:   "John",
-				expires: &future,
-			}},
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{},
+				sm: map[string]string{},
+				lm: map[string][]string{},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: future}},
+				sm: map[string]string{"Name": "John"},
+				lm: map[string][]string{},
+			},
 		},
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			connection := NewConnection(tC.data)
-			timer := TestClockTimer{mockNow: now}
-			logger := NewTestLogger()
-			app := NewApplication(nil, timer, logger)
+			connection, app, logger := setupAppAndConnection(tC)
 
 			messenger := handleRequests(app.ProcessRequest, logger)
 			ProcessConnection(connection, &messenger, logger)
 			messenger.Cancel()
 
-			got := connection.response
-
-			if connection.closeCallCount != 1 {
-				t.Errorf("connection not closed properly. Call count %d", connection.closeCallCount)
-			}
-
-			if !reflect.DeepEqual(got, tC.want) {
-				t.Errorf("got: %#v. want: %#v", string(got), string(tC.want))
-			}
-
-			gotState := app.state.stringMap
-			gotString := gotState["Name"]
-			wantString := tC.wantState["Name"]
-
-			if gotString.value != wantString.value {
-				t.Errorf("got: %#v. want: %#v", gotString.value, wantString.value)
-			}
-
-			if *gotString.expires != *wantString.expires {
-				t.Errorf("got: %#v. want: %#v", *gotString.expires, *wantString.expires)
-			}
+			assertConnectionAndAppState(t, tC, connection, app)
 		})
 	}
 }
 
-func TestActiveKeyExpirationTable(t *testing.T) {
+func TestActiveKeyExpiration(t *testing.T) {
 	now := time.Now()
-	getFuture := func(delta int) *time.Time {
-		future := now.Add(time.Duration(delta) * time.Second)
-		return &future
-	}
 
-	testCases := []struct {
-		desc           string
-		data           string
-		want           []byte
-		expectedDelete bool
-		expires        *time.Time
-	}{
+	testCases := []testCase{
 		{
-			desc:           "should delete key if it is expired on get",
-			data:           "*2\r\n$3\r\nget\r\n$4\r\nName\r\n",
-			want:           []byte(NIL_BULK_STRING),
-			expectedDelete: true,
-			expires:        getFuture(-2),
+			now:  now,
+			desc: "should delete key if it is expired on get",
+			data: "*2\r\n$3\r\nget\r\n$4\r\nName\r\n",
+			want: []byte(NIL_BULK_STRING),
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: getFuture(now, -2)}},
+				sm: map[string]string{"Name": "John"},
+				lm: map[string][]string{},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{},
+				sm: map[string]string{},
+				lm: map[string][]string{},
+			},
 		},
 		{
-			desc:           "should not delete key if it is not expired on get",
-			data:           "*2\r\n$3\r\nget\r\n$4\r\nName\r\n",
-			want:           []byte("$4\r\nJohn\r\n"),
-			expectedDelete: false,
-			expires:        getFuture(2),
+			now:  now,
+			desc: "should not delete key if it is not expired on get",
+			data: "*2\r\n$3\r\nget\r\n$4\r\nName\r\n",
+			want: []byte("$4\r\nJohn\r\n"),
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: getFuture(now, 2)}},
+				sm: map[string]string{"Name": "John"},
+				lm: map[string][]string{},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: getFuture(now, 2)}},
+				sm: map[string]string{"Name": "John"},
+				lm: map[string][]string{},
+			},
 		},
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			initialState := map[string]StringValue{"Name": {
-				value:   "John",
-				expires: tC.expires,
-			}}
+			connection, app, logger := setupAppAndConnection(tC)
 
-			timer := TestClockTimer{mockNow: now}
-			logger := NewTestLogger()
-			app := NewApplication(nil, timer, logger)
-			app.state.stringMap = initialState
-
-			connection := NewConnection("*2\r\n$3\r\nget\r\n$4\r\nName\r\n")
 			messenger := handleRequests(app.ProcessRequest, logger)
 			ProcessConnection(connection, &messenger, logger)
 			messenger.Cancel()
 
-			got := connection.response
-
-			if connection.closeCallCount != 1 {
-				t.Errorf("connection not closed properly. Call count %d", connection.closeCallCount)
-			}
-
-			want := tC.want
-			if !reflect.DeepEqual(got, want) {
-				t.Errorf("got: %#v. want: %#v", string(got), string(want))
-			}
-
-			gotState := app.state.stringMap
-			_, exists := gotState["Name"]
-
-			if tC.expectedDelete && exists {
-				t.Error("The key must not exist")
-			}
-
-			if !tC.expectedDelete && !exists {
-				t.Error("The key must exist")
-			}
+			assertConnectionAndAppState(t, tC, connection, app)
 		})
 	}
 }
 
 func TestExpireCommand(t *testing.T) {
 	now := time.Now()
-	getFuture := func(delta int) *time.Time {
-		future := now.Add(time.Duration(delta) * time.Second)
-		return &future
-	}
 
-	testCases := []struct {
-		desc         string
-		data         string
-		want         []byte
-		initialState map[string]StringValue
-		wantState    map[string]StringValue
-	}{
+	testCases := []testCase{
 		{
+			now:  now,
 			desc: "expire on persistent key",
 			data: "*3\r\n$6\r\nexpire\r\n$4\r\nName\r\n$1\r\n1\r\n",
 			want: []byte(":1\r\n"),
-			initialState: map[string]StringValue{"Name": {
-				value:   "John",
-				expires: nil,
-			}},
-			wantState: map[string]StringValue{"Name": {
-				value:   "John",
-				expires: getFuture(1),
-			}},
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
+				sm: map[string]string{"Name": "John"},
+				lm: map[string][]string{},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: getFuture(now, 1)}},
+				sm: map[string]string{"Name": "John"},
+				lm: map[string][]string{},
+			},
 		},
 		{
+			now:  now,
 			desc: "expire on volatile key should update time",
 			data: "*3\r\n$6\r\nexpire\r\n$4\r\nName\r\n$1\r\n1\r\n",
 			want: []byte(":1\r\n"),
-			initialState: map[string]StringValue{"Name": {
-				value:   "John",
-				expires: getFuture(1),
-			}},
-			wantState: map[string]StringValue{"Name": {
-				value:   "John",
-				expires: getFuture(2),
-			}},
-		}, {
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: getFuture(now, 1)}},
+				sm: map[string]string{},
+				lm: map[string][]string{"Name": {"John"}},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: getFuture(now, 2)}},
+				sm: map[string]string{},
+				lm: map[string][]string{"Name": {"John"}},
+			},
+		},
+		{
+			now:  now,
 			desc: "expire on non-existant key should do nothing",
 			data: "*3\r\n$6\r\nexpire\r\n$7\r\nUnknown\r\n$1\r\n1\r\n",
 			want: []byte(":0\r\n"),
-			initialState: map[string]StringValue{"Name": {
-				value:   "John",
-				expires: getFuture(1),
-			}},
-			wantState: map[string]StringValue{"Name": {
-				value:   "John",
-				expires: getFuture(1),
-			}},
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
+				sm: map[string]string{"Name": "John"},
+				lm: map[string][]string{},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
+				sm: map[string]string{"Name": "John"},
+				lm: map[string][]string{},
+			},
 		},
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			timer := TestClockTimer{mockNow: now}
-			logger := NewTestLogger()
-			app := NewApplication(nil, timer, logger)
-			app.state.stringMap = tC.initialState
+			connection, app, logger := setupAppAndConnection(tC)
 
-			connection := NewConnection(tC.data)
 			messenger := handleRequests(app.ProcessRequest, logger)
 			ProcessConnection(connection, &messenger, logger)
 			messenger.Cancel()
 
-			got := connection.response
-
-			if connection.closeCallCount != 1 {
-				t.Errorf("connection not closed properly. Call count %d", connection.closeCallCount)
-			}
-
-			want := tC.want
-			if !reflect.DeepEqual(got, want) {
-				t.Fatalf("got: %#v. want: %#v", string(got), string(want))
-			}
-
-			gotState := app.state.stringMap
-			gotString := gotState["Name"]
-			wantString := tC.wantState["Name"]
-
-			if gotString.value != wantString.value {
-				t.Fatalf("got: %#v. want: %#v", gotString.value, wantString.value)
-			}
-
-			if *gotString.expires != *wantString.expires {
-				t.Errorf("got: %#v. want: %#v", *gotString.expires, *wantString.expires)
-			}
+			assertConnectionAndAppState(t, tC, connection, app)
 		})
 	}
 }
@@ -466,97 +499,129 @@ func TestExpireCommand(t *testing.T) {
 func TestExistsCommand(t *testing.T) {
 	now := time.Now()
 
-	testCases := []struct {
-		desc  string
-		data  string
-		want  []byte
-		state map[string]StringValue
-	}{
+	testCases := []testCase{
 		{
+			now:  now,
 			desc: "existing key single time",
 			data: "*2\r\n$6\r\nexists\r\n$4\r\nName\r\n",
 			want: []byte(":1\r\n"),
-			state: map[string]StringValue{"Name": {
-				value:   "John",
-				expires: nil,
-			}},
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
+				sm: map[string]string{"Name": "John"},
+				lm: map[string][]string{},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
+				sm: map[string]string{"Name": "John"},
+				lm: map[string][]string{},
+			},
 		},
 		{
+			now:  now,
 			desc: "existing key repeated",
 			data: "*3\r\n$6\r\nexists\r\n$4\r\nName\r\n$4\r\nName\r\n",
 			want: []byte(":2\r\n"),
-			state: map[string]StringValue{"Name": {
-				value:   "John",
-				expires: nil,
-			}},
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string][]string{"Name": {"John"}},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string][]string{"Name": {"John"}},
+			},
 		},
 		{
+			now:  now,
 			desc: "non existing key single time",
 			data: "*2\r\n$6\r\nexists\r\n$4\r\nNone\r\n",
 			want: []byte(":0\r\n"),
-			state: map[string]StringValue{"Name": {
-				value:   "John",
-				expires: nil,
-			}},
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string][]string{"Name": {"John"}},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string][]string{"Name": {"John"}},
+			},
 		},
 		{
+			now:  now,
 			desc: "existing and non existing keys single time",
 			data: "*3\r\n$6\r\nexists\r\n$4\r\nName\r\n$4\r\nNone\r\n",
 			want: []byte(":1\r\n"),
-			state: map[string]StringValue{"Name": {
-				value:   "John",
-				expires: nil,
-			}},
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string][]string{"Name": {"John"}},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string][]string{"Name": {"John"}},
+			},
 		},
 		{
+			now:  now,
 			desc: "existing repeated and non existing single time",
 			data: "*4\r\n$6\r\nexists\r\n$4\r\nName\r\n$4\r\nNone\r\n$4\r\nName\r\n",
 			want: []byte(":2\r\n"),
-			state: map[string]StringValue{"Name": {
-				value:   "John",
-				expires: nil,
-			}},
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string][]string{"Name": {"John"}},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string][]string{"Name": {"John"}},
+			},
 		},
 		{
+			now:  now,
 			desc: "existing single time and non existing repeated",
 			data: "*4\r\n$6\r\nexists\r\n$4\r\nName\r\n$4\r\nNone\r\n$4\r\nNone\r\n",
 			want: []byte(":1\r\n"),
-			state: map[string]StringValue{"Name": {
-				value:   "John",
-				expires: nil,
-			}},
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string][]string{"Name": {"John"}},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string][]string{"Name": {"John"}},
+			},
 		},
 		{
+			now:  now,
 			desc: "existing repeated and non existing repeated",
 			data: "*5\r\n$6\r\nexists\r\n$4\r\nName\r\n$4\r\nNone\r\n$4\r\nName\r\n$4\r\nNone\r\n",
 			want: []byte(":2\r\n"),
-			state: map[string]StringValue{"Name": {
-				value:   "John",
-				expires: nil,
-			}},
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string][]string{"Name": {"John"}},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string][]string{"Name": {"John"}},
+			},
 		},
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			connection := NewConnection(tC.data)
-			timer := TestClockTimer{mockNow: now}
-			logger := NewTestLogger()
-			app := NewApplication(nil, timer, logger)
-			app.state.stringMap = tC.state
+			connection, app, logger := setupAppAndConnection(tC)
 
 			messenger := handleRequests(app.ProcessRequest, logger)
 			ProcessConnection(connection, &messenger, logger)
 			messenger.Cancel()
 
-			got := connection.response
-
-			if connection.closeCallCount != 1 {
-				t.Errorf("connection not closed properly. Call count %d", connection.closeCallCount)
-			}
-
-			if !reflect.DeepEqual(got, tC.want) {
-				t.Errorf("got: %#v. want: %#v", string(got), string(tC.want))
-			}
+			assertConnectionAndAppState(t, tC, connection, app)
 		})
 	}
 }
@@ -564,300 +629,320 @@ func TestExistsCommand(t *testing.T) {
 func TestDeleteCommand(t *testing.T) {
 	now := time.Now()
 
-	testCases := []struct {
-		desc         string
-		data         string
-		want         []byte
-		initialState map[string]StringValue
-		wantState    map[string]StringValue
-	}{
+	testCases := []testCase{
 		{
+			now:  now,
 			desc: "delete existing key single time",
 			data: "*2\r\n$3\r\ndel\r\n$4\r\nName\r\n",
 			want: []byte(":1\r\n"),
-			initialState: map[string]StringValue{"Name": {
-				value:   "John",
-				expires: nil,
-			}},
-			wantState: map[string]StringValue{},
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
+				sm: map[string]string{"Name": "John"},
+				lm: map[string][]string{},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{},
+				sm: map[string]string{},
+				lm: map[string][]string{},
+			},
 		},
 		{
+			now:  now,
 			desc: "delete existing key repeated",
 			data: "*3\r\n$3\r\ndel\r\n$4\r\nName\r\n$4\r\nName\r\n",
 			want: []byte(":1\r\n"),
-			initialState: map[string]StringValue{"Name": {
-				value:   "John",
-				expires: nil,
-			}},
-			wantState: map[string]StringValue{},
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string][]string{"Name": {"John"}},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{},
+				sm: map[string]string{},
+				lm: map[string][]string{},
+			},
 		},
 		{
+			now:  now,
 			desc: "delete non existing key single time",
 			data: "*2\r\n$3\r\ndel\r\n$4\r\nNone\r\n",
 			want: []byte(":0\r\n"),
-			initialState: map[string]StringValue{"Name": {
-				value:   "John",
-				expires: nil,
-			}},
-			wantState: map[string]StringValue{"Name": {
-				value:   "John",
-				expires: nil,
-			}},
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
+				sm: map[string]string{"Name": "John"},
+				lm: map[string][]string{},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
+				sm: map[string]string{"Name": "John"},
+				lm: map[string][]string{},
+			},
 		},
 		{
+			now:  now,
 			desc: "delete existing and non existing keys single time",
 			data: "*3\r\n$3\r\ndel\r\n$4\r\nName\r\n$4\r\nNone\r\n",
 			want: []byte(":1\r\n"),
-			initialState: map[string]StringValue{"Name": {
-				value:   "John",
-				expires: nil,
-			}},
-			wantState: map[string]StringValue{},
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
+				sm: map[string]string{"Name": "John"},
+				lm: map[string][]string{},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{},
+				sm: map[string]string{},
+				lm: map[string][]string{},
+			},
 		},
 		{
+			now:  now,
 			desc: "delete existing repeated and non existing single time",
 			data: "*4\r\n$3\r\ndel\r\n$4\r\nName\r\n$4\r\nNone\r\n$4\r\nName\r\n",
 			want: []byte(":1\r\n"),
-			initialState: map[string]StringValue{"Name": {
-				value:   "John",
-				expires: nil,
-			}},
-			wantState: map[string]StringValue{},
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
+				sm: map[string]string{"Name": "John"},
+				lm: map[string][]string{},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{},
+				sm: map[string]string{},
+				lm: map[string][]string{},
+			},
 		},
 		{
+			now:  now,
 			desc: "delete existing single time and non existing repeated",
 			data: "*4\r\n$3\r\ndel\r\n$4\r\nName\r\n$4\r\nNone\r\n$4\r\nNone\r\n",
 			want: []byte(":1\r\n"),
-			initialState: map[string]StringValue{"Name": {
-				value:   "John",
-				expires: nil,
-			}},
-			wantState: map[string]StringValue{},
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string][]string{"Name": {"John"}},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{},
+				sm: map[string]string{},
+				lm: map[string][]string{},
+			},
 		},
 		{
+			now:  now,
 			desc: "existing repeated and non existing repeated",
 			data: "*5\r\n$3\r\ndel\r\n$4\r\nName\r\n$4\r\nNone\r\n$4\r\nName\r\n$4\r\nNone\r\n",
 			want: []byte(":1\r\n"),
-			initialState: map[string]StringValue{"Name": {
-				value:   "John",
-				expires: nil,
-			}},
-			wantState: map[string]StringValue{},
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string][]string{"Name": {"John"}},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{},
+				sm: map[string]string{},
+				lm: map[string][]string{},
+			},
 		},
 		{
+			now:  now,
 			desc: "delete multiple existing keys",
 			data: "*3\r\n$3\r\ndel\r\n$4\r\nName\r\n$5\r\nName2\r\n",
 			want: []byte(":2\r\n"),
-			initialState: map[string]StringValue{
-				"Name": {
-					value:   "John",
-					expires: nil,
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{
+					"Name":  {group: "list", expires: nil},
+					"Name2": {group: "string", expires: nil},
+					"Name3": {group: "list", expires: nil},
 				},
-				"Name2": {
-					value:   "John",
-					expires: nil,
-				},
-				"Name3": {
-					value:   "John",
-					expires: nil,
+				sm: map[string]string{"Name2": "John"},
+				lm: map[string][]string{
+					"Name":  {"John"},
+					"Name3": {"Smith"},
 				},
 			},
-			wantState: map[string]StringValue{"Name3": {
-				value:   "John",
-				expires: nil,
-			}},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"Name3": {group: "list", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string][]string{"Name3": {"Smith"}},
+			},
 		},
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			connection := NewConnection(tC.data)
-			timer := TestClockTimer{mockNow: now}
-			logger := NewTestLogger()
-			app := NewApplication(nil, timer, logger)
-			app.state.stringMap = tC.initialState
+			connection, app, logger := setupAppAndConnection(tC)
 
 			messenger := handleRequests(app.ProcessRequest, logger)
 			ProcessConnection(connection, &messenger, logger)
 			messenger.Cancel()
 
-			got := connection.response
-
-			if connection.closeCallCount != 1 {
-				t.Errorf("connection not closed properly. Call count %d", connection.closeCallCount)
-			}
-
-			if !reflect.DeepEqual(got, tC.want) {
-				t.Fatalf("got: %#v. want: %#v", string(got), string(tC.want))
-			}
-
-			gotState := app.state.stringMap
-			if !reflect.DeepEqual(gotState, tC.wantState) {
-				t.Fatalf("got: %#v. want: %#v", gotState, tC.wantState)
-			}
+			assertConnectionAndAppState(t, tC, connection, app)
 		})
 	}
 }
 
 func TestIncrementCommand(t *testing.T) {
 	now := time.Now()
-
-	testCases := []struct {
-		desc         string
-		data         string
-		want         []byte
-		initialState map[string]StringValue
-		wantState    map[string]StringValue
-	}{
+	testCases := []testCase{
 		{
+			now:  now,
 			desc: "increment existing key",
 			data: "*2\r\n$4\r\nincr\r\n$4\r\nName\r\n",
 			want: []byte(":2\r\n"),
-			initialState: map[string]StringValue{
-				"Name": {
-					value:   "1",
-					expires: nil,
-				}},
-			wantState: map[string]StringValue{
-				"Name": {
-					value:   "2",
-					expires: nil,
-				}},
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
+				sm: map[string]string{"Name": "1"},
+				lm: map[string][]string{},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
+				sm: map[string]string{"Name": "2"},
+				lm: map[string][]string{},
+			},
 		},
 		{
-			desc:         "increment non existing key",
-			data:         "*2\r\n$4\r\nincr\r\n$4\r\nName\r\n",
-			want:         []byte(":0\r\n"),
-			initialState: map[string]StringValue{},
-			wantState: map[string]StringValue{
-				"Name": {
-					value:   "0",
-					expires: nil,
-				}},
+			now:  now,
+			desc: "increment non existing integer key",
+			data: "*2\r\n$4\r\nincr\r\n$4\r\nName\r\n",
+			want: []byte(":0\r\n"),
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"Some": {group: "list", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string][]string{"Some": {"John"}},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{
+					"Some": {group: "list", expires: nil},
+					"Name": {group: "string", expires: nil},
+				},
+				sm: map[string]string{"Name": "0"},
+				lm: map[string][]string{"Some": {"John"}},
+			},
 		},
 		{
+			now:  now,
+			desc: "increment non parseable string key",
+			data: "*2\r\n$4\r\nincr\r\n$4\r\nName\r\n",
+			want: []byte("-key 'Name' cannot be parsed to integer\r\n"),
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
+				sm: map[string]string{"Name": "John"},
+				lm: map[string][]string{},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
+				sm: map[string]string{"Name": "John"},
+				lm: map[string][]string{},
+			},
+		},
+		{
+			now:  now,
 			desc: "increment non integer key",
 			data: "*2\r\n$4\r\nincr\r\n$4\r\nName\r\n",
-			want: []byte("-key cannot be parsed to integer\r\n"),
-			initialState: map[string]StringValue{
-				"Name": {
-					value:   "not parseable",
-					expires: nil,
-				}},
-			wantState: map[string]StringValue{
-				"Name": {
-					value:   "not parseable",
-					expires: nil,
-				}},
+			want: []byte("-key 'Name' does not support this operation\r\n"),
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string][]string{"Name": {"John"}},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string][]string{"Name": {"John"}},
+			},
 		},
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			connection := NewConnection(tC.data)
-			timer := TestClockTimer{mockNow: now}
-			logger := NewTestLogger()
-			app := NewApplication(nil, timer, logger)
-			app.state.stringMap = tC.initialState
+			connection, app, logger := setupAppAndConnection(tC)
 
 			messenger := handleRequests(app.ProcessRequest, logger)
 			ProcessConnection(connection, &messenger, logger)
 			messenger.Cancel()
 
-			got := connection.response
-
-			if connection.closeCallCount != 1 {
-				t.Errorf("connection not closed properly. Call count %d", connection.closeCallCount)
-			}
-
-			if !reflect.DeepEqual(got, tC.want) {
-				t.Fatalf("got: %#v. want: %#v", string(got), string(tC.want))
-			}
-
-			gotState := app.state.stringMap
-			if !reflect.DeepEqual(gotState, tC.wantState) {
-				t.Fatalf("got: %#v. want: %#v", gotState, tC.wantState)
-			}
+			assertConnectionAndAppState(t, tC, connection, app)
 		})
 	}
 }
 
 func TestDecrementCommand(t *testing.T) {
 	now := time.Now()
-
-	testCases := []struct {
-		desc         string
-		data         string
-		want         []byte
-		initialState map[string]StringValue
-		wantState    map[string]StringValue
-	}{
+	testCases := []testCase{
 		{
+			now:  now,
 			desc: "decrement existing key",
 			data: "*2\r\n$4\r\ndecr\r\n$4\r\nName\r\n",
-			want: []byte(":1\r\n"),
-			initialState: map[string]StringValue{
-				"Name": {
-					value:   "2",
-					expires: nil,
-				}},
-			wantState: map[string]StringValue{
-				"Name": {
-					value:   "1",
-					expires: nil,
-				}},
+			want: []byte(":0\r\n"),
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
+				sm: map[string]string{"Name": "1"},
+				lm: map[string][]string{},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
+				sm: map[string]string{"Name": "0"},
+				lm: map[string][]string{},
+			},
 		},
 		{
-			desc:         "decrement non existing key",
-			data:         "*2\r\n$4\r\ndecr\r\n$4\r\nName\r\n",
-			want:         []byte(":0\r\n"),
-			initialState: map[string]StringValue{},
-			wantState: map[string]StringValue{
-				"Name": {
-					value:   "0",
-					expires: nil,
-				}},
+			now:  now,
+			desc: "decrement non existing integer key",
+			data: "*2\r\n$4\r\ndecr\r\n$4\r\nName\r\n",
+			want: []byte(":0\r\n"),
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"Some": {group: "list", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string][]string{"Some": {"John"}},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{
+					"Some": {group: "list", expires: nil},
+					"Name": {group: "string", expires: nil},
+				},
+				sm: map[string]string{"Name": "0"},
+				lm: map[string][]string{"Some": {"John"}},
+			},
 		},
 		{
+			now:  now,
+			desc: "decrement non parseable string key",
+			data: "*2\r\n$4\r\ndecr\r\n$4\r\nName\r\n",
+			want: []byte("-key 'Name' cannot be parsed to integer\r\n"),
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
+				sm: map[string]string{"Name": "John"},
+				lm: map[string][]string{},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
+				sm: map[string]string{"Name": "John"},
+				lm: map[string][]string{},
+			},
+		},
+		{
+			now:  now,
 			desc: "decrement non integer key",
 			data: "*2\r\n$4\r\ndecr\r\n$4\r\nName\r\n",
-			want: []byte("-key cannot be parsed to integer\r\n"),
-			initialState: map[string]StringValue{
-				"Name": {
-					value:   "not parseable",
-					expires: nil,
-				}},
-			wantState: map[string]StringValue{
-				"Name": {
-					value:   "not parseable",
-					expires: nil,
-				}},
+			want: []byte("-key 'Name' does not support this operation\r\n"),
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string][]string{"Name": {"John"}},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string][]string{"Name": {"John"}},
+			},
 		},
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			connection := NewConnection(tC.data)
-			timer := TestClockTimer{mockNow: now}
-			logger := NewTestLogger()
-			app := NewApplication(nil, timer, logger)
-			app.state.stringMap = tC.initialState
+			connection, app, logger := setupAppAndConnection(tC)
 
 			messenger := handleRequests(app.ProcessRequest, logger)
 			ProcessConnection(connection, &messenger, logger)
 			messenger.Cancel()
 
-			got := connection.response
-
-			if connection.closeCallCount != 1 {
-				t.Errorf("connection not closed properly. Call count %d", connection.closeCallCount)
-			}
-
-			if !reflect.DeepEqual(got, tC.want) {
-				t.Fatalf("got: %#v. want: %#v", string(got), string(tC.want))
-			}
-
-			gotState := app.state.stringMap
-			if !reflect.DeepEqual(gotState, tC.wantState) {
-				t.Fatalf("got: %#v. want: %#v", gotState, tC.wantState)
-			}
+			assertConnectionAndAppState(t, tC, connection, app)
 		})
 	}
 }
@@ -865,67 +950,49 @@ func TestDecrementCommand(t *testing.T) {
 func TestRPushCommand(t *testing.T) {
 	now := time.Now()
 
-	testCases := []struct {
-		desc         string
-		data         string
-		want         []byte
-		initialState map[string]ListValue
-		wantState    map[string]ListValue
-	}{
+	testCases := []testCase{
 		{
-			desc:         "push to non-existing key",
-			data:         "*3\r\n$5\r\nrpush\r\n$6\r\nmylist\r\n$5\r\nhello\r\n",
-			want:         []byte(":1\r\n"),
-			initialState: map[string]ListValue{},
-			wantState: map[string]ListValue{
-				"mylist": {
-					values:  []string{"hello"},
-					expires: nil,
-				}},
+			now:  now,
+			desc: "push to non-existing key",
+			data: "*3\r\n$5\r\nrpush\r\n$6\r\nmylist\r\n$5\r\nhello\r\n",
+			want: []byte(":1\r\n"),
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{},
+				sm: map[string]string{},
+				lm: map[string][]string{},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"mylist": {group: "list", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string][]string{"mylist": {"hello"}},
+			},
 		},
 		{
+			now:  now,
 			desc: "push to key keeps order",
 			data: "*5\r\n$5\r\nrpush\r\n$6\r\nmylist\r\n$5\r\nhello\r\n$5\r\nworld\r\n$4\r\ntest\r\n",
 			want: []byte(":4\r\n"),
-			initialState: map[string]ListValue{
-				"mylist": {
-					values:  []string{"hi"},
-					expires: nil,
-				},
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"mylist": {group: "list", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string][]string{"mylist": {"hi"}},
 			},
-			wantState: map[string]ListValue{
-				"mylist": {
-					values:  []string{"hi", "hello", "world", "test"},
-					expires: nil,
-				}},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"mylist": {group: "list", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string][]string{"mylist": {"hi", "hello", "world", "test"}},
+			},
 		},
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			connection := NewConnection(tC.data)
-			timer := TestClockTimer{mockNow: now}
-			logger := NewTestLogger()
-			app := NewApplication(nil, timer, logger)
-			app.state.listMap = tC.initialState
+			connection, app, logger := setupAppAndConnection(tC)
 
 			messenger := handleRequests(app.ProcessRequest, logger)
 			ProcessConnection(connection, &messenger, logger)
 			messenger.Cancel()
 
-			got := connection.response
-
-			if connection.closeCallCount != 1 {
-				t.Errorf("connection not closed properly. Call count %d", connection.closeCallCount)
-			}
-
-			if !reflect.DeepEqual(got, tC.want) {
-				t.Fatalf("got: %#v. want: %#v", string(got), string(tC.want))
-			}
-
-			gotState := app.state.listMap
-			if !reflect.DeepEqual(gotState, tC.wantState) {
-				t.Fatalf("got: %#v. want: %#v", gotState, tC.wantState)
-			}
+			assertConnectionAndAppState(t, tC, connection, app)
 		})
 	}
 }
