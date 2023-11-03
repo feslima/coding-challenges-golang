@@ -983,6 +983,22 @@ func TestRPushCommand(t *testing.T) {
 				lm: map[string][]string{"mylist": {"hi", "hello", "world", "test"}},
 			},
 		},
+		{
+			now:  now,
+			desc: "push to invalid existing key returns error",
+			data: "*3\r\n$5\r\nrpush\r\n$6\r\nmylist\r\n$5\r\nhello\r\n",
+			want: []byte("-key 'mylist' does not support this operation\r\n"),
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"mylist": {group: "string", expires: nil}},
+				sm: map[string]string{"mylist": "hi"},
+				lm: map[string][]string{},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"mylist": {group: "string", expires: nil}},
+				sm: map[string]string{"mylist": "hi"},
+				lm: map[string][]string{},
+			},
+		},
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
