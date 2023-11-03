@@ -17,7 +17,7 @@ type keyspace struct {
 	mutex     *sync.RWMutex
 	keys      map[string]keyspaceEntry
 	stringMap map[string]string
-	listMap   map[string][]string
+	listMap   map[string]list
 }
 
 type KeyResult struct {
@@ -42,7 +42,7 @@ func newKeyspace(clock ClockTimer, m *sync.RWMutex) *keyspace {
 		clock:     clock,
 		keys:      make(map[string]keyspaceEntry),
 		stringMap: make(map[string]string),
-		listMap:   make(map[string][]string),
+		listMap:   make(map[string]list),
 	}
 }
 
@@ -81,7 +81,7 @@ func (ks *keyspace) Get(key string) KeyResult {
 		kr = KeyResult{str: &v}
 	case "list":
 		v := ks.listMap[key]
-		kr = KeyResult{arr: v}
+		kr = KeyResult{arr: v.ToSlice()}
 	}
 	ks.mutex.RUnlock()
 
@@ -201,7 +201,7 @@ func (ks *keyspace) SetListKey(key string, value []string, exp *ExpiryDuration) 
 	if ok && ke.group == "string" {
 		delete(ks.stringMap, key)
 	}
-	ks.listMap[key] = value
+	ks.listMap[key] = NewListFromSlice(value)
 	newKe := keyspaceEntry{group: "string", expires: nil}
 
 	if exp != nil {
@@ -261,7 +261,7 @@ func (ks *keyspace) PushToTail(key string, values []string) (int, error) {
 
 	ke, ok := ks.keys[key]
 	if !ok {
-		ks.listMap[key] = values
+		ks.listMap[key] = NewListFromSlice(values)
 		ks.keys[key] = keyspaceEntry{group: "list", expires: nil}
 		return len(values), nil
 	}
@@ -278,10 +278,10 @@ func (ks *keyspace) PushToTail(key string, values []string) (int, error) {
 		return 0, fmt.Errorf("key '%s' not found", key)
 	}
 
-	newList := append(listVal, values...)
+	listVal.AppendSliceToTail(values)
 
-	ks.listMap[key] = newList
-	return len(newList), nil
+	ks.listMap[key] = listVal
+	return listVal.size, nil
 }
 
 func CheckIsExpired(c ClockTimer, ke keyspaceEntry) bool {

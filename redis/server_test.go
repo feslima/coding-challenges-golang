@@ -140,7 +140,7 @@ func TestReadonlyCommands(t *testing.T) {
 type mapState struct {
 	ks map[string]keyspaceEntry
 	sm map[string]string
-	lm map[string][]string
+	lm map[string]list
 }
 
 type testCase struct {
@@ -204,12 +204,12 @@ func TestSetCommand(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{},
 				sm: map[string]string{},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{},
 				sm: map[string]string{},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 		},
 		{
@@ -220,12 +220,12 @@ func TestSetCommand(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{},
 				sm: map[string]string{},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
 				sm: map[string]string{"Name": "John"},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 		},
 		{
@@ -236,12 +236,12 @@ func TestSetCommand(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
 				sm: map[string]string{},
-				lm: map[string][]string{"Name": {"John"}},
+				lm: map[string]list{"Name": NewListFromSlice([]string{"John"})},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
 				sm: map[string]string{"Name": "John"},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 		},
 	}
@@ -270,12 +270,12 @@ func TestGetCommand(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
 				sm: map[string]string{"Name": "John"},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
 				sm: map[string]string{"Name": "John"},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 		},
 		{
@@ -286,12 +286,12 @@ func TestGetCommand(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{},
 				sm: map[string]string{},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{},
 				sm: map[string]string{},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 		},
 		{
@@ -302,12 +302,12 @@ func TestGetCommand(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
 				sm: map[string]string{},
-				lm: map[string][]string{"Name": {"John"}},
+				lm: map[string]list{"Name": NewListFromSlice([]string{"John"})},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
 				sm: map[string]string{},
-				lm: map[string][]string{"Name": {"John"}},
+				lm: map[string]list{"Name": NewListFromSlice([]string{"John"})},
 			},
 		},
 	}
@@ -342,12 +342,12 @@ func TestSetWithExpiryCommand(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{},
 				sm: map[string]string{},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: future}},
 				sm: map[string]string{"Name": "John"},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 		},
 		{
@@ -358,12 +358,12 @@ func TestSetWithExpiryCommand(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{},
 				sm: map[string]string{},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: future}},
 				sm: map[string]string{"Name": "John"},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 		},
 	}
@@ -392,12 +392,12 @@ func TestActiveKeyExpiration(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: getFuture(now, -2)}},
 				sm: map[string]string{"Name": "John"},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{},
 				sm: map[string]string{},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 		},
 		{
@@ -408,12 +408,12 @@ func TestActiveKeyExpiration(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: getFuture(now, 2)}},
 				sm: map[string]string{"Name": "John"},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: getFuture(now, 2)}},
 				sm: map[string]string{"Name": "John"},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 		},
 	}
@@ -442,12 +442,12 @@ func TestExpireCommand(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
 				sm: map[string]string{"Name": "John"},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: getFuture(now, 1)}},
 				sm: map[string]string{"Name": "John"},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 		},
 		{
@@ -458,12 +458,12 @@ func TestExpireCommand(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: getFuture(now, 1)}},
 				sm: map[string]string{},
-				lm: map[string][]string{"Name": {"John"}},
+				lm: map[string]list{"Name": NewListFromSlice([]string{"John"})},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: getFuture(now, 2)}},
 				sm: map[string]string{},
-				lm: map[string][]string{"Name": {"John"}},
+				lm: map[string]list{"Name": NewListFromSlice([]string{"John"})},
 			},
 		},
 		{
@@ -474,12 +474,12 @@ func TestExpireCommand(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
 				sm: map[string]string{"Name": "John"},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
 				sm: map[string]string{"Name": "John"},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 		},
 	}
@@ -508,12 +508,12 @@ func TestExistsCommand(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
 				sm: map[string]string{"Name": "John"},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
 				sm: map[string]string{"Name": "John"},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 		},
 		{
@@ -524,12 +524,12 @@ func TestExistsCommand(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
 				sm: map[string]string{},
-				lm: map[string][]string{"Name": {"John"}},
+				lm: map[string]list{"Name": NewListFromSlice([]string{"John"})},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
 				sm: map[string]string{},
-				lm: map[string][]string{"Name": {"John"}},
+				lm: map[string]list{"Name": NewListFromSlice([]string{"John"})},
 			},
 		},
 		{
@@ -540,12 +540,12 @@ func TestExistsCommand(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
 				sm: map[string]string{},
-				lm: map[string][]string{"Name": {"John"}},
+				lm: map[string]list{"Name": NewListFromSlice([]string{"John"})},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
 				sm: map[string]string{},
-				lm: map[string][]string{"Name": {"John"}},
+				lm: map[string]list{"Name": NewListFromSlice([]string{"John"})},
 			},
 		},
 		{
@@ -556,12 +556,12 @@ func TestExistsCommand(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
 				sm: map[string]string{},
-				lm: map[string][]string{"Name": {"John"}},
+				lm: map[string]list{"Name": NewListFromSlice([]string{"John"})},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
 				sm: map[string]string{},
-				lm: map[string][]string{"Name": {"John"}},
+				lm: map[string]list{"Name": NewListFromSlice([]string{"John"})},
 			},
 		},
 		{
@@ -572,12 +572,12 @@ func TestExistsCommand(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
 				sm: map[string]string{},
-				lm: map[string][]string{"Name": {"John"}},
+				lm: map[string]list{"Name": NewListFromSlice([]string{"John"})},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
 				sm: map[string]string{},
-				lm: map[string][]string{"Name": {"John"}},
+				lm: map[string]list{"Name": NewListFromSlice([]string{"John"})},
 			},
 		},
 		{
@@ -588,12 +588,12 @@ func TestExistsCommand(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
 				sm: map[string]string{},
-				lm: map[string][]string{"Name": {"John"}},
+				lm: map[string]list{"Name": NewListFromSlice([]string{"John"})},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
 				sm: map[string]string{},
-				lm: map[string][]string{"Name": {"John"}},
+				lm: map[string]list{"Name": NewListFromSlice([]string{"John"})},
 			},
 		},
 		{
@@ -604,12 +604,12 @@ func TestExistsCommand(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
 				sm: map[string]string{},
-				lm: map[string][]string{"Name": {"John"}},
+				lm: map[string]list{"Name": NewListFromSlice([]string{"John"})},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
 				sm: map[string]string{},
-				lm: map[string][]string{"Name": {"John"}},
+				lm: map[string]list{"Name": NewListFromSlice([]string{"John"})},
 			},
 		},
 	}
@@ -638,12 +638,12 @@ func TestDeleteCommand(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
 				sm: map[string]string{"Name": "John"},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{},
 				sm: map[string]string{},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 		},
 		{
@@ -654,12 +654,12 @@ func TestDeleteCommand(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
 				sm: map[string]string{},
-				lm: map[string][]string{"Name": {"John"}},
+				lm: map[string]list{"Name": NewListFromSlice([]string{"John"})},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{},
 				sm: map[string]string{},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 		},
 		{
@@ -670,12 +670,12 @@ func TestDeleteCommand(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
 				sm: map[string]string{"Name": "John"},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
 				sm: map[string]string{"Name": "John"},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 		},
 		{
@@ -686,12 +686,12 @@ func TestDeleteCommand(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
 				sm: map[string]string{"Name": "John"},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{},
 				sm: map[string]string{},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 		},
 		{
@@ -702,12 +702,12 @@ func TestDeleteCommand(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
 				sm: map[string]string{"Name": "John"},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{},
 				sm: map[string]string{},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 		},
 		{
@@ -718,12 +718,12 @@ func TestDeleteCommand(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
 				sm: map[string]string{},
-				lm: map[string][]string{"Name": {"John"}},
+				lm: map[string]list{"Name": NewListFromSlice([]string{"John"})},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{},
 				sm: map[string]string{},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 		},
 		{
@@ -734,12 +734,12 @@ func TestDeleteCommand(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
 				sm: map[string]string{},
-				lm: map[string][]string{"Name": {"John"}},
+				lm: map[string]list{"Name": NewListFromSlice([]string{"John"})},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{},
 				sm: map[string]string{},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 		},
 		{
@@ -754,15 +754,15 @@ func TestDeleteCommand(t *testing.T) {
 					"Name3": {group: "list", expires: nil},
 				},
 				sm: map[string]string{"Name2": "John"},
-				lm: map[string][]string{
-					"Name":  {"John"},
-					"Name3": {"Smith"},
+				lm: map[string]list{
+					"Name":  NewListFromSlice([]string{"John"}),
+					"Name3": NewListFromSlice([]string{"Smith"}),
 				},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{"Name3": {group: "list", expires: nil}},
 				sm: map[string]string{},
-				lm: map[string][]string{"Name3": {"Smith"}},
+				lm: map[string]list{"Name3": NewListFromSlice([]string{"Smith"})},
 			},
 		},
 	}
@@ -790,12 +790,12 @@ func TestIncrementCommand(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
 				sm: map[string]string{"Name": "1"},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
 				sm: map[string]string{"Name": "2"},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 		},
 		{
@@ -806,7 +806,7 @@ func TestIncrementCommand(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{"Some": {group: "list", expires: nil}},
 				sm: map[string]string{},
-				lm: map[string][]string{"Some": {"John"}},
+				lm: map[string]list{"Some": NewListFromSlice([]string{"John"})},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{
@@ -814,7 +814,7 @@ func TestIncrementCommand(t *testing.T) {
 					"Name": {group: "string", expires: nil},
 				},
 				sm: map[string]string{"Name": "0"},
-				lm: map[string][]string{"Some": {"John"}},
+				lm: map[string]list{"Some": NewListFromSlice([]string{"John"})},
 			},
 		},
 		{
@@ -825,12 +825,12 @@ func TestIncrementCommand(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
 				sm: map[string]string{"Name": "John"},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
 				sm: map[string]string{"Name": "John"},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 		},
 		{
@@ -841,12 +841,12 @@ func TestIncrementCommand(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
 				sm: map[string]string{},
-				lm: map[string][]string{"Name": {"John"}},
+				lm: map[string]list{"Name": NewListFromSlice([]string{"John"})},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
 				sm: map[string]string{},
-				lm: map[string][]string{"Name": {"John"}},
+				lm: map[string]list{"Name": NewListFromSlice([]string{"John"})},
 			},
 		},
 	}
@@ -874,12 +874,12 @@ func TestDecrementCommand(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
 				sm: map[string]string{"Name": "1"},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
 				sm: map[string]string{"Name": "0"},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 		},
 		{
@@ -890,7 +890,7 @@ func TestDecrementCommand(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{"Some": {group: "list", expires: nil}},
 				sm: map[string]string{},
-				lm: map[string][]string{"Some": {"John"}},
+				lm: map[string]list{"Some": NewListFromSlice([]string{"John"})},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{
@@ -898,7 +898,7 @@ func TestDecrementCommand(t *testing.T) {
 					"Name": {group: "string", expires: nil},
 				},
 				sm: map[string]string{"Name": "0"},
-				lm: map[string][]string{"Some": {"John"}},
+				lm: map[string]list{"Some": NewListFromSlice([]string{"John"})},
 			},
 		},
 		{
@@ -909,12 +909,12 @@ func TestDecrementCommand(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
 				sm: map[string]string{"Name": "John"},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
 				sm: map[string]string{"Name": "John"},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 		},
 		{
@@ -925,12 +925,12 @@ func TestDecrementCommand(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
 				sm: map[string]string{},
-				lm: map[string][]string{"Name": {"John"}},
+				lm: map[string]list{"Name": NewListFromSlice([]string{"John"})},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{"Name": {group: "list", expires: nil}},
 				sm: map[string]string{},
-				lm: map[string][]string{"Name": {"John"}},
+				lm: map[string]list{"Name": NewListFromSlice([]string{"John"})},
 			},
 		},
 	}
@@ -959,12 +959,12 @@ func TestRPushCommand(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{},
 				sm: map[string]string{},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{"mylist": {group: "list", expires: nil}},
 				sm: map[string]string{},
-				lm: map[string][]string{"mylist": {"hello"}},
+				lm: map[string]list{"mylist": NewListFromSlice([]string{"hello"})},
 			},
 		},
 		{
@@ -975,12 +975,12 @@ func TestRPushCommand(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{"mylist": {group: "list", expires: nil}},
 				sm: map[string]string{},
-				lm: map[string][]string{"mylist": {"hi"}},
+				lm: map[string]list{"mylist": NewListFromSlice([]string{"hi"})},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{"mylist": {group: "list", expires: nil}},
 				sm: map[string]string{},
-				lm: map[string][]string{"mylist": {"hi", "hello", "world", "test"}},
+				lm: map[string]list{"mylist": NewListFromSlice([]string{"hi", "hello", "world", "test"})},
 			},
 		},
 		{
@@ -991,12 +991,12 @@ func TestRPushCommand(t *testing.T) {
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{"mylist": {group: "string", expires: nil}},
 				sm: map[string]string{"mylist": "hi"},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{"mylist": {group: "string", expires: nil}},
 				sm: map[string]string{"mylist": "hi"},
-				lm: map[string][]string{},
+				lm: map[string]list{},
 			},
 		},
 	}
