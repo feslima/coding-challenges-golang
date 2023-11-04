@@ -20,6 +20,7 @@ func (l *list) AppendToTail(value string) {
 	} else {
 		tail := l.tail
 		tail.next = node
+		l.tail = node
 	}
 
 	l.size += 1
@@ -43,10 +44,29 @@ func (l *list) ToSlice() []string {
 	return result
 }
 
+func (l *list) AppendToHead(value string) {
+	node := &listnode{value: value}
+
+	if l.size == 0 {
+		l.tail = node
+		l.head = node
+	} else {
+		head := l.head
+		node.next = head
+		l.head = node
+	}
+
+	l.size += 1
+}
+
+func (l *list) AppendSliceToHead(values []string) {
+	for _, v := range values {
+		l.AppendToHead(v)
+	}
+}
+
 func NewListFromSlice(values []string) list {
 	l := list{}
-	for _, v := range values {
-		l.AppendToTail(v)
-	}
+	l.AppendSliceToTail(values)
 	return l
 }

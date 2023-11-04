@@ -284,6 +284,35 @@ func (ks *keyspace) PushToTail(key string, values []string) (int, error) {
 	return listVal.size, nil
 }
 
+func (ks *keyspace) PushToHead(key string, values []string) (int, error) {
+	ks.mutex.Lock()
+	defer ks.mutex.Unlock()
+
+	ke, ok := ks.keys[key]
+	if !ok {
+		ks.listMap[key] = NewListFromSlice(values)
+		ks.keys[key] = keyspaceEntry{group: "list", expires: nil}
+		return len(values), nil
+	}
+
+	if ke.group != "list" {
+		return 0, fmt.Errorf("key '%s' does not support this operation", key)
+	}
+
+	listVal, ok := ks.listMap[key]
+	if !ok {
+		// if this happens, then it means the key is not in the correct keyspace
+		// and there is a synchronization bug in the keyspace
+		// TODO: good luck fixing this
+		return 0, fmt.Errorf("key '%s' not found", key)
+	}
+
+	listVal.AppendSliceToHead(values)
+
+	ks.listMap[key] = listVal
+	return listVal.size, nil
+}
+
 func CheckIsExpired(c ClockTimer, ke keyspaceEntry) bool {
 	if ke.expires == nil {
 		return false

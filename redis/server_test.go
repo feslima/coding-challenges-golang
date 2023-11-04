@@ -1012,3 +1012,69 @@ func TestRPushCommand(t *testing.T) {
 		})
 	}
 }
+
+func TestLPushCommand(t *testing.T) {
+	now := time.Now()
+
+	testCases := []testCase{
+		{
+			now:  now,
+			desc: "push to non-existing key",
+			data: "*3\r\n$5\r\nlpush\r\n$6\r\nmylist\r\n$5\r\nhello\r\n",
+			want: []byte(":1\r\n"),
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{},
+				sm: map[string]string{},
+				lm: map[string]list{},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"mylist": {group: "list", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string]list{"mylist": NewListFromSlice([]string{"hello"})},
+			},
+		},
+		{
+			now:  now,
+			desc: "push to key keeps order",
+			data: "*5\r\n$5\r\nlpush\r\n$6\r\nmylist\r\n$5\r\nhello\r\n$5\r\nworld\r\n$4\r\ntest\r\n",
+			want: []byte(":4\r\n"),
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"mylist": {group: "list", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string]list{"mylist": NewListFromSlice([]string{"hi"})},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"mylist": {group: "list", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string]list{"mylist": NewListFromSlice([]string{"test", "world", "hello", "hi"})},
+			},
+		},
+		{
+			now:  now,
+			desc: "push to invalid existing key returns error",
+			data: "*3\r\n$5\r\nlpush\r\n$6\r\nmylist\r\n$5\r\nhello\r\n",
+			want: []byte("-key 'mylist' does not support this operation\r\n"),
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"mylist": {group: "string", expires: nil}},
+				sm: map[string]string{"mylist": "hi"},
+				lm: map[string]list{},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"mylist": {group: "string", expires: nil}},
+				sm: map[string]string{"mylist": "hi"},
+				lm: map[string]list{},
+			},
+		},
+	}
+	for _, tC := range testCases {
+		t.Run(tC.desc, func(t *testing.T) {
+			connection, app, logger := setupAppAndConnection(tC)
+
+			messenger := handleRequests(app.ProcessRequest, logger)
+			ProcessConnection(connection, &messenger, logger)
+			messenger.Cancel()
+
+			assertConnectionAndAppState(t, tC, connection, app)
+		})
+	}
+}

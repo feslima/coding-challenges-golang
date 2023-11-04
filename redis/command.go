@@ -22,6 +22,7 @@ const (
 	INCR   = "INCR"
 	DECR   = "DECR"
 	RPUSH  = "RPUSH"
+	LPUSH  = "LPUSH"
 )
 
 var cmdParseTable = map[string]Command{
@@ -36,6 +37,7 @@ var cmdParseTable = map[string]Command{
 	"incr":   INCR,
 	"decr":   DECR,
 	"rpush":  RPUSH,
+	"lpush":  LPUSH,
 }
 
 func (c *Cmd) Parse() error {
@@ -93,6 +95,9 @@ func (c *Cmd) Process(a *Application) (string, error) {
 
 	case RPUSH:
 		return processRPush(c.args, a)
+
+	case LPUSH:
+		return processLPush(c.args, a)
 	}
 }
 
@@ -288,6 +293,22 @@ func processRPush(args []string, app *Application) (string, error) {
 	values := args[1:]
 
 	length, err := app.state.keyspace.PushToTail(key, values)
+	if err != nil {
+		return SerializeSimpleError(err.Error()), nil
+	}
+
+	return SerializeInteger(length), nil
+}
+
+func processLPush(args []string, app *Application) (string, error) {
+	if len(args) < 1 {
+		return "", errors.New("wrong number of arguments.")
+	}
+
+	key := args[0]
+	values := args[1:]
+
+	length, err := app.state.keyspace.PushToHead(key, values)
 	if err != nil {
 		return SerializeSimpleError(err.Error()), nil
 	}
