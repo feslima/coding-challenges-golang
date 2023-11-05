@@ -169,13 +169,64 @@ func (as *ApplicationState) Load(r io.Reader, a *Application) error {
 	return nil
 }
 
-func openFile(filename string) (*os.File, error) {
-	file, err := os.Open(filename)
-	if err != nil {
-		return nil, err
+func (app *Application) LoadStateFromSnapshot() {
+	if _, err := os.Stat("redis-go.rdb"); err == nil {
+		f, err := os.Open("redis-go.rdb")
+		if err == nil {
+			app.logger.Info("loading previous state from snapshot")
+			err = app.state.Load(f, app)
+			f.Close()
+			if err == nil {
+				app.logger.Info("done loading snapshot")
+			} else {
+				app.logger.Info("failed to load state from snapshot. Proceeding with empty state")
+			}
+		}
+	}
+}
+
+func (app *Application) SetupSnapshotSavers() func() {
+	var closerFuncs []func()
+	for i := 0; i < len(app.config.Save); i += 2 {
+		seconds := app.config.Save[i]
+		changes := app.config.Save[i+1]
+		cs := RunEveryNSeconds(time.Duration(seconds)*time.Second, func() { SaveAfterNChanges(changes, app) })
+		closerFuncs = append(closerFuncs, cs)
 	}
 
-	return file, nil
+	closeSavers := func() {
+		for _, closer := range closerFuncs {
+			closer()
+		}
+	}
+	return closeSavers
+}
+
+func (app *Application) SetupKeyExpirer() func() {
+	return RunEveryNSeconds(time.Second/10, func() { CheckAndExpireKeys(app) })
+}
+
+func SaveAfterNChanges(n int64, app *Application) {
+	app.state.mutex.RLock()
+	modifications := int64(app.state.modifications)
+	app.state.mutex.RUnlock()
+
+	if modifications >= n {
+		app.logger.Info(fmt.Sprintf("saving snapshot after %d changes...", modifications))
+		f, err := os.Create("redis-go.rdb")
+		if err != nil {
+			app.logger.Error("failed to open redis-go.rdb file")
+			return
+		}
+		defer f.Close()
+
+		err = app.state.Save(f)
+		if err != nil {
+			app.logger.Error("failed to save snapshot")
+			return
+		}
+		app.logger.Info("finished saving snapshot...")
+	}
 }
 
 func CheckAndExpireKeys(app *Application) {
@@ -212,6 +263,7 @@ var configMap map[string]bool = map[string]bool{"appendonly": true, "save": true
 type ApplicationConfiguration struct {
 	appendonly string
 	save       string
+	Save       []int64
 }
 
 func NewApplicationConfiguration(appendonly string, save string) (*ApplicationConfiguration, error) {
@@ -241,11 +293,12 @@ func (ac ApplicationConfiguration) validateAppendOnly() error {
 	return nil
 }
 
-func (ac ApplicationConfiguration) validateSave() error {
-	_, err := ac.parseSave()
+func (ac *ApplicationConfiguration) validateSave() error {
+	p, err := ac.parseSave()
 	if err != nil {
 		return err
 	}
+	ac.Save = p
 	return nil
 }
 

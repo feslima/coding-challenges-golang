@@ -4,7 +4,6 @@ import (
 	"log/slog"
 	"os"
 	"redis"
-	"time"
 )
 
 func main() {
@@ -30,10 +29,13 @@ func main() {
 	timer := redis.RealClockTimer{}
 	app := redis.NewApplication(config, timer, logger)
 
-	closeChecker := redis.RunEveryNSeconds(time.Second/10, func() { redis.CheckAndExpireKeys(app) })
+	app.LoadStateFromSnapshot()
+	closeSavers := app.SetupSnapshotSavers()
+	closeChecker := app.SetupKeyExpirer()
 
 	err = redis.Listen(server, app.ProcessRequest, logger)
 	if err != nil {
+		closeSavers()
 		closeChecker()
 		panic(err)
 	}
