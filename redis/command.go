@@ -154,7 +154,7 @@ func processSet(args []string, app *Application) (string, error) {
 
 func processGet(args []string, app *Application) (string, error) {
 	if len(args) != 1 {
-		return "", errors.New("wrong number of arguments.")
+		return "", wrongNumOfArgsErr
 	}
 
 	key := args[0]
@@ -168,7 +168,7 @@ func processGet(args []string, app *Application) (string, error) {
 
 func processConfig(args []string, app *Application) (string, error) {
 	if len(args) < 2 {
-		return "", errors.New("wrong number of arguments.")
+		return "", wrongNumOfArgsErr
 	}
 
 	cmd := strings.ToUpper(args[0])
@@ -204,7 +204,7 @@ func processConfig(args []string, app *Application) (string, error) {
 
 func processExpire(args []string, app *Application) (string, error) {
 	if len(args) != 2 {
-		return "", errors.New("wrong number of arguments.")
+		return "", wrongNumOfArgsErr
 	}
 
 	key := args[0]
@@ -226,7 +226,7 @@ func processExpire(args []string, app *Application) (string, error) {
 
 func processExists(args []string, app *Application) (string, error) {
 	if len(args) < 1 {
-		return "", errors.New("wrong number of arguments.")
+		return "", wrongNumOfArgsErr
 	}
 
 	keyCount := app.state.keyspace.BulkExists(args)
@@ -242,7 +242,7 @@ func processExists(args []string, app *Application) (string, error) {
 
 func processDelete(args []string, app *Application) (string, error) {
 	if len(args) < 1 {
-		return "", errors.New("wrong number of arguments.")
+		return "", wrongNumOfArgsErr
 	}
 
 	keyCount := app.state.keyspace.BulkDelete(args)
@@ -258,7 +258,7 @@ func processDelete(args []string, app *Application) (string, error) {
 
 func processIncrement(args []string, app *Application) (string, error) {
 	if len(args) != 1 {
-		return "", errors.New("wrong number of arguments.")
+		return "", wrongNumOfArgsErr
 	}
 
 	key := args[0]
@@ -272,7 +272,7 @@ func processIncrement(args []string, app *Application) (string, error) {
 
 func processDecrement(args []string, app *Application) (string, error) {
 	if len(args) != 1 {
-		return "", errors.New("wrong number of arguments.")
+		return "", wrongNumOfArgsErr
 	}
 
 	key := args[0]
@@ -286,7 +286,7 @@ func processDecrement(args []string, app *Application) (string, error) {
 
 func processRPush(args []string, app *Application) (string, error) {
 	if len(args) < 1 {
-		return "", errors.New("wrong number of arguments.")
+		return "", wrongNumOfArgsErr
 	}
 
 	key := args[0]
@@ -302,7 +302,7 @@ func processRPush(args []string, app *Application) (string, error) {
 
 func processLPush(args []string, app *Application) (string, error) {
 	if len(args) < 1 {
-		return "", errors.New("wrong number of arguments.")
+		return "", wrongNumOfArgsErr
 	}
 
 	key := args[0]
