@@ -36,7 +36,7 @@ func (l *list) ToSlice() []string {
 	result := []string{}
 
 	p := l.head
-	for p.next != nil {
+	for p != nil {
 		result = append(result, p.value)
 		p = p.next
 	}

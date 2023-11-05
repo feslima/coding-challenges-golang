@@ -111,6 +111,21 @@ func (ks *keyspace) Expire(key string, duration int64) bool {
 	return true
 }
 
+func (ks *keyspace) ExpireAt(key string, deadline time.Time) bool {
+	ks.mutex.Lock()
+	defer ks.mutex.Unlock()
+
+	ke, ok := ks.keys[key]
+	if !ok {
+		return false
+	}
+
+	ke.expires = &deadline
+	ks.keys[key] = ke
+
+	return true
+}
+
 func (ks *keyspace) Exists(key string) bool {
 	return ks.Get(key).IsValid()
 }

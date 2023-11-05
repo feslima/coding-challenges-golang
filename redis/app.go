@@ -1,9 +1,12 @@
 package redis
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -30,8 +33,9 @@ type Application struct {
 func NewApplication(config *ApplicationConfiguration, timer ClockTimer, l *slog.Logger) *Application {
 	mutex := &sync.RWMutex{}
 	state := ApplicationState{
-		keyspace: *newKeyspace(timer, mutex),
-		mutex:    mutex,
+		keyspace:      *newKeyspace(timer, mutex),
+		mutex:         mutex,
+		modifications: 0,
 	}
 	return &Application{
 		state:  &state,
@@ -57,8 +61,121 @@ func (app *Application) ProcessRequest(raw []byte) ([]byte, error) {
 }
 
 type ApplicationState struct {
-	mutex    *sync.RWMutex
-	keyspace keyspace
+	mutex         *sync.RWMutex
+	keyspace      keyspace
+	modifications int
+}
+
+func (as *ApplicationState) CountModification() {
+	as.mutex.Lock()
+	defer as.mutex.Unlock()
+
+	as.modifications += 1
+}
+
+func (as *ApplicationState) ResetCounter() {
+	as.mutex.Lock()
+	defer as.mutex.Unlock()
+
+	as.modifications = 0
+}
+
+func (as *ApplicationState) Save(out io.Writer) error {
+	as.mutex.RLock()
+
+	for k, v := range as.keyspace.stringMap {
+		e := as.keyspace.keys[k]
+
+		kv := fmt.Sprintf("%s%s", SerializeBulkString(k), SerializeBulkString(v))
+		cmd := fmt.Sprintf("*3\r\n$3\r\nset\r\n%s", kv)
+		fmt.Fprint(out, cmd)
+
+		if e.expires != nil {
+			exp := e.expires.Unix()
+			cmd = fmt.Sprintf("*3\r\n$8\r\nexpireat\r\n%s$%d\r\n%d\r\n", SerializeBulkString(k), len(fmt.Sprint(exp)), exp)
+
+			fmt.Fprint(out, cmd)
+		}
+	}
+
+	for k, v := range as.keyspace.listMap {
+		e := as.keyspace.keys[k]
+
+		if v.size > 0 {
+			result := fmt.Sprintf("$%d\r\n%s\r\n", len(k), k)
+			for _, d := range v.ToSlice() {
+				string := SerializeBulkString(d)
+				result += string
+			}
+			cmd := fmt.Sprintf("*%d\r\n$5\r\nrpush\r\n%s", v.size+2, result)
+			fmt.Fprint(out, cmd)
+
+			if e.expires != nil {
+				exp := e.expires.Unix()
+				cmd = fmt.Sprintf("*3\r\n$8\r\nexpireat\r\n%s$%d\r\n%d\r\n", SerializeBulkString(k), len(fmt.Sprint(exp)), exp)
+
+				fmt.Fprint(out, cmd)
+			}
+		}
+	}
+
+	as.mutex.RUnlock()
+
+	as.ResetCounter()
+	return nil
+}
+
+func splitByBulkArray(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	// Return nothing if at end of file and no data passed
+	if atEOF && len(data) == 0 {
+		return 0, nil, nil
+	}
+
+	// Find the index of the input of a newline followed by an
+	// asterisk sign.
+	if i := strings.Index(string(data), "\n*"); i >= 0 {
+		return i + 1, data[0 : i+1], nil
+	}
+
+	// If at end of file with data return the data
+	if atEOF {
+		return len(data), data, nil
+	}
+	return
+}
+
+func (as *ApplicationState) Load(r io.Reader, a *Application) error {
+	s := bufio.NewScanner(r)
+	s.Split(splitByBulkArray)
+
+	for s.Scan() {
+		line := s.Bytes()
+		cmd, err := DecodeMessage(line)
+		if err != nil {
+			continue
+		}
+		err = cmd.Parse()
+		if err != nil {
+			continue
+		}
+
+		_, err = cmd.Process(a)
+		if err != nil {
+			continue
+		}
+	}
+
+	as.ResetCounter()
+	return nil
+}
+
+func openFile(filename string) (*os.File, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	return file, nil
 }
 
 func CheckAndExpireKeys(app *Application) {

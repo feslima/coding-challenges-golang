@@ -11,33 +11,35 @@ import (
 type Command string
 
 const (
-	PING   = "PING"
-	ECHO   = "ECHO"
-	SET    = "SET"
-	GET    = "GET"
-	CONFIG = "CONFIG"
-	EXPIRE = "EXPIRE"
-	EXISTS = "EXISTS"
-	DEL    = "DEL"
-	INCR   = "INCR"
-	DECR   = "DECR"
-	RPUSH  = "RPUSH"
-	LPUSH  = "LPUSH"
+	PING     = "PING"
+	ECHO     = "ECHO"
+	SET      = "SET"
+	GET      = "GET"
+	CONFIG   = "CONFIG"
+	EXPIRE   = "EXPIRE"
+	EXPIREAT = "EXPIREAT"
+	EXISTS   = "EXISTS"
+	DEL      = "DEL"
+	INCR     = "INCR"
+	DECR     = "DECR"
+	RPUSH    = "RPUSH"
+	LPUSH    = "LPUSH"
 )
 
 var cmdParseTable = map[string]Command{
-	"ping":   PING,
-	"echo":   ECHO,
-	"set":    SET,
-	"get":    GET,
-	"config": CONFIG,
-	"expire": EXPIRE,
-	"exists": EXISTS,
-	"del":    DEL,
-	"incr":   INCR,
-	"decr":   DECR,
-	"rpush":  RPUSH,
-	"lpush":  LPUSH,
+	"ping":     PING,
+	"echo":     ECHO,
+	"set":      SET,
+	"get":      GET,
+	"config":   CONFIG,
+	"expire":   EXPIRE,
+	"expireat": EXPIREAT,
+	"exists":   EXISTS,
+	"del":      DEL,
+	"incr":     INCR,
+	"decr":     DECR,
+	"rpush":    RPUSH,
+	"lpush":    LPUSH,
 }
 
 func (c *Cmd) Parse() error {
@@ -80,6 +82,9 @@ func (c *Cmd) Process(a *Application) (string, error) {
 
 	case EXPIRE:
 		return processExpire(c.args, a)
+
+	case EXPIREAT:
+		return processExpireAt(c.args, a)
 
 	case EXISTS:
 		return processExists(c.args, a)
@@ -148,6 +153,7 @@ func processSet(args []string, app *Application) (string, error) {
 	}
 
 	app.state.keyspace.SetKey(key, value, expiry)
+	app.state.CountModification()
 
 	return OK_SIMPLE_STRING, nil
 }
@@ -220,6 +226,31 @@ func processExpire(args []string, app *Application) (string, error) {
 	if !ok {
 		return SerializeInteger(0), nil
 	}
+	app.state.CountModification()
+
+	return SerializeInteger(1), nil
+}
+
+func processExpireAt(args []string, app *Application) (string, error) {
+	if len(args) != 2 {
+		return "", wrongNumOfArgsErr
+	}
+
+	key := args[0]
+	rawStamp := args[1]
+
+	stamp, err := strconv.ParseInt(rawStamp, 10, 0)
+	if err != nil {
+		msg := fmt.Sprintf("could not parse '%s' to integer", rawStamp)
+		return SerializeSimpleError(msg), nil
+	}
+
+	deadline := time.Unix(stamp, 0)
+	ok := app.state.keyspace.ExpireAt(key, deadline)
+	if !ok {
+		return SerializeInteger(0), nil
+	}
+	app.state.CountModification()
 
 	return SerializeInteger(1), nil
 }
@@ -246,6 +277,7 @@ func processDelete(args []string, app *Application) (string, error) {
 	}
 
 	keyCount := app.state.keyspace.BulkDelete(args)
+	app.state.CountModification()
 
 	finalCount := 0
 	for _, c := range keyCount {
@@ -267,6 +299,7 @@ func processIncrement(args []string, app *Application) (string, error) {
 		return SerializeSimpleError(err.Error()), nil
 	}
 
+	app.state.CountModification()
 	return SerializeInteger(value), nil
 }
 
@@ -281,6 +314,7 @@ func processDecrement(args []string, app *Application) (string, error) {
 		return SerializeSimpleError(err.Error()), nil
 	}
 
+	app.state.CountModification()
 	return SerializeInteger(value), nil
 }
 
@@ -297,6 +331,7 @@ func processRPush(args []string, app *Application) (string, error) {
 		return SerializeSimpleError(err.Error()), nil
 	}
 
+	app.state.CountModification()
 	return SerializeInteger(length), nil
 }
 
@@ -313,5 +348,6 @@ func processLPush(args []string, app *Application) (string, error) {
 		return SerializeSimpleError(err.Error()), nil
 	}
 
+	app.state.CountModification()
 	return SerializeInteger(length), nil
 }

@@ -1078,3 +1078,42 @@ func TestLPushCommand(t *testing.T) {
 		})
 	}
 }
+
+func TestChangesCounting(t *testing.T) {
+	now := time.Now()
+
+	testCases := []testCase{
+		{
+			now:  now,
+			desc: "should count on write operation",
+			data: "*3\r\n$3\r\nset\r\n$4\r\nName\r\n$4\r\nJohn\r\n",
+			want: []byte(OK_SIMPLE_STRING),
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{},
+				sm: map[string]string{},
+				lm: map[string]list{},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"Name": {group: "string", expires: nil}},
+				sm: map[string]string{"Name": "John"},
+				lm: map[string]list{},
+			},
+		},
+	}
+	for _, tC := range testCases {
+		t.Run(tC.desc, func(t *testing.T) {
+			connection, app, logger := setupAppAndConnection(tC)
+
+			messenger := handleRequests(app.ProcessRequest, logger)
+			ProcessConnection(connection, &messenger, logger)
+			messenger.Cancel()
+
+			assertConnectionAndAppState(t, tC, connection, app)
+
+			if app.state.modifications != 1 {
+				t.Error("expected a single write count")
+			}
+
+		})
+	}
+}
