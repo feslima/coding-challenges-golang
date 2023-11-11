@@ -9,12 +9,13 @@ import (
 	"net"
 )
 
-func NewServer(host string, port string, l *slog.Logger) (net.Listener, error) {
-	server, err := net.Listen("tcp", host+":"+port)
+func NewServer(host string, port int, l *slog.Logger) (net.Listener, error) {
+	p := fmt.Sprintf("%04d", port)
+	server, err := net.Listen("tcp", host+":"+p)
 	if err != nil {
 		return nil, err
 	}
-	l.Info("Initialized server " + host + ":" + port)
+	l.Info("Initialized server " + host + ":" + p)
 	return server, err
 }
 
