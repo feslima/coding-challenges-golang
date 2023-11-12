@@ -9,6 +9,8 @@ import (
 	"net"
 )
 
+// Creates a net.Listener on success. You are responsible for closing
+// this Listener.
 func NewServer(host string, port int, l *slog.Logger) (net.Listener, error) {
 	p := fmt.Sprintf("%04d", port)
 	server, err := net.Listen("tcp", host+":"+p)
@@ -21,7 +23,7 @@ func NewServer(host string, port int, l *slog.Logger) (net.Listener, error) {
 
 type ConnectionHandler func(Message) ([]byte, error)
 
-func Listen(server net.Listener, app *Application, l *slog.Logger) error {
+func Listen(server net.Listener, app *Application, l *slog.Logger) {
 	messenger := &messenger{
 		app:  app,
 		in:   make(chan Message),
@@ -33,11 +35,17 @@ func Listen(server net.Listener, app *Application, l *slog.Logger) error {
 		conn, err := server.Accept()
 		if err != nil {
 			l.Error("failed to accept connection")
-			return err
+			continue
 		}
 
-		app.AddClient(conn)
-		go ProcessConnection(conn, messenger, l)
+		err = app.AddClient(conn)
+		if err != nil {
+			l.Error(fmt.Sprintf("failed to add client connection: %v", err))
+			conn.Write([]byte(SerializeSimpleError(err.Error())))
+			continue
+		}
+
+		go HandleConnection(conn, messenger, l)
 	}
 }
 
@@ -84,7 +92,7 @@ type Message struct {
 	conn net.Conn
 }
 
-func ProcessConnection(conn net.Conn, m *messenger, l *slog.Logger) {
+func HandleConnection(conn net.Conn, m *messenger, l *slog.Logger) {
 	defer conn.Close()
 
 	reader := bufio.NewReader(conn)

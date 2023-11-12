@@ -41,15 +41,10 @@ func main() {
 	app := redis.NewApplication(config, timer, logger)
 
 	app.LoadStateFromSnapshot()
-	closeSavers := app.SetupSnapshotSavers()
-	closeChecker := app.SetupKeyExpirer()
+	app.SetupSnapshotSavers()
+	app.SetupKeyExpirer()
 
-	err = redis.Listen(server, app, logger)
-	if err != nil {
-		closeSavers()
-		closeChecker()
-		panic(err)
-	}
+	redis.Listen(server, app, logger)
 }
 
 type configs struct {

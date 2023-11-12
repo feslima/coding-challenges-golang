@@ -52,20 +52,23 @@ func NewApplication(config *ApplicationConfiguration, timer ClockTimer, l *slog.
 	}
 }
 
-func (app *Application) AddClient(c net.Conn) {
-	addr := c.RemoteAddr().String()
-	parsed := net.ParseIP(addr)
-	if parsed == nil {
-		// TODO: better handle this silent failure
-		// leaving like this because we need to use net.Pipe in testing
-		app.logger.Error(fmt.Sprintf("invalid ip address '%s'", addr))
-		return
+func (app *Application) AddClient(c net.Conn) error {
+	hostport := c.RemoteAddr().String()
+	host, _, err := net.SplitHostPort(hostport)
+	if err != nil {
+		return fmt.Errorf("invalid host:post address '%s'. error: %v", hostport, err)
 	}
 
-	app.clients[parsed.To4().String()] = &ApplicationClient{
+	// parsed, err := net.ResolveIPAddr("ip", host)
+	// if err != nil {
+	// 	return fmt.Errorf("invalid ip address '%s'. error: %v", host, err)
+	// }
+
+	app.clients[host] = &ApplicationClient{
 		conn:              c,
 		isOnSubscribeMode: false,
 	}
+	return nil
 }
 
 func (app *Application) ProcessRequest(m Message) ([]byte, error) {

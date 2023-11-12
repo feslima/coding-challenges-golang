@@ -166,12 +166,7 @@ func TestReadonlyCommands(t *testing.T) {
 		t.Run(tC.desc, func(t *testing.T) {
 			app, srv, logger := setupAppAndConnection(tC, t)
 
-			go func() {
-				err := Listen(srv, app, logger)
-				if err != nil {
-					t.Errorf("failed to setup listener: %v", err)
-				}
-			}()
+			go func() { Listen(srv, app, logger) }()
 
 			conn := makeRequestToServer(tC, srv, t)
 			defer conn.Close()
@@ -237,12 +232,7 @@ func TestSetCommand(t *testing.T) {
 		t.Run(tC.desc, func(t *testing.T) {
 			app, srv, logger := setupAppAndConnection(tC, t)
 
-			go func() {
-				err := Listen(srv, app, logger)
-				if err != nil {
-					t.Errorf("failed to setup listener: %v", err)
-				}
-			}()
+			go func() { Listen(srv, app, logger) }()
 
 			conn := makeRequestToServer(tC, srv, t)
 			defer conn.Close()
@@ -309,12 +299,7 @@ func TestGetCommand(t *testing.T) {
 		t.Run(tC.desc, func(t *testing.T) {
 			app, srv, logger := setupAppAndConnection(tC, t)
 
-			go func() {
-				err := Listen(srv, app, logger)
-				if err != nil {
-					t.Errorf("failed to setup listener: %v", err)
-				}
-			}()
+			go func() { Listen(srv, app, logger) }()
 
 			conn := makeRequestToServer(tC, srv, t)
 			defer conn.Close()
@@ -366,12 +351,7 @@ func TestSetWithExpiryCommand(t *testing.T) {
 		t.Run(tC.desc, func(t *testing.T) {
 			app, srv, logger := setupAppAndConnection(tC, t)
 
-			go func() {
-				err := Listen(srv, app, logger)
-				if err != nil {
-					t.Errorf("failed to setup listener: %v", err)
-				}
-			}()
+			go func() { Listen(srv, app, logger) }()
 
 			conn := makeRequestToServer(tC, srv, t)
 			defer conn.Close()
@@ -422,12 +402,7 @@ func TestActiveKeyExpiration(t *testing.T) {
 		t.Run(tC.desc, func(t *testing.T) {
 			app, srv, logger := setupAppAndConnection(tC, t)
 
-			go func() {
-				err := Listen(srv, app, logger)
-				if err != nil {
-					t.Errorf("failed to setup listener: %v", err)
-				}
-			}()
+			go func() { Listen(srv, app, logger) }()
 
 			conn := makeRequestToServer(tC, srv, t)
 			defer conn.Close()
@@ -494,12 +469,7 @@ func TestExpireCommand(t *testing.T) {
 		t.Run(tC.desc, func(t *testing.T) {
 			app, srv, logger := setupAppAndConnection(tC, t)
 
-			go func() {
-				err := Listen(srv, app, logger)
-				if err != nil {
-					t.Errorf("failed to setup listener: %v", err)
-				}
-			}()
+			go func() { Listen(srv, app, logger) }()
 
 			conn := makeRequestToServer(tC, srv, t)
 			defer conn.Close()
@@ -630,12 +600,7 @@ func TestExistsCommand(t *testing.T) {
 		t.Run(tC.desc, func(t *testing.T) {
 			app, srv, logger := setupAppAndConnection(tC, t)
 
-			go func() {
-				err := Listen(srv, app, logger)
-				if err != nil {
-					t.Errorf("failed to setup listener: %v", err)
-				}
-			}()
+			go func() { Listen(srv, app, logger) }()
 
 			conn := makeRequestToServer(tC, srv, t)
 			defer conn.Close()
@@ -789,12 +754,7 @@ func TestDeleteCommand(t *testing.T) {
 		t.Run(tC.desc, func(t *testing.T) {
 			app, srv, logger := setupAppAndConnection(tC, t)
 
-			go func() {
-				err := Listen(srv, app, logger)
-				if err != nil {
-					t.Errorf("failed to setup listener: %v", err)
-				}
-			}()
+			go func() { Listen(srv, app, logger) }()
 
 			conn := makeRequestToServer(tC, srv, t)
 			defer conn.Close()
@@ -879,12 +839,7 @@ func TestIncrementCommand(t *testing.T) {
 		t.Run(tC.desc, func(t *testing.T) {
 			app, srv, logger := setupAppAndConnection(tC, t)
 
-			go func() {
-				err := Listen(srv, app, logger)
-				if err != nil {
-					t.Errorf("failed to setup listener: %v", err)
-				}
-			}()
+			go func() { Listen(srv, app, logger) }()
 
 			conn := makeRequestToServer(tC, srv, t)
 			defer conn.Close()
@@ -969,12 +924,7 @@ func TestDecrementCommand(t *testing.T) {
 		t.Run(tC.desc, func(t *testing.T) {
 			app, srv, logger := setupAppAndConnection(tC, t)
 
-			go func() {
-				err := Listen(srv, app, logger)
-				if err != nil {
-					t.Errorf("failed to setup listener: %v", err)
-				}
-			}()
+			go func() { Listen(srv, app, logger) }()
 
 			conn := makeRequestToServer(tC, srv, t)
 			defer conn.Close()
@@ -1041,12 +991,7 @@ func TestRPushCommand(t *testing.T) {
 		t.Run(tC.desc, func(t *testing.T) {
 			app, srv, logger := setupAppAndConnection(tC, t)
 
-			go func() {
-				err := Listen(srv, app, logger)
-				if err != nil {
-					t.Errorf("failed to setup listener: %v", err)
-				}
-			}()
+			go func() { Listen(srv, app, logger) }()
 
 			conn := makeRequestToServer(tC, srv, t)
 			defer conn.Close()
@@ -1113,12 +1058,7 @@ func TestLPushCommand(t *testing.T) {
 		t.Run(tC.desc, func(t *testing.T) {
 			app, srv, logger := setupAppAndConnection(tC, t)
 
-			go func() {
-				err := Listen(srv, app, logger)
-				if err != nil {
-					t.Errorf("failed to setup listener: %v", err)
-				}
-			}()
+			go func() { Listen(srv, app, logger) }()
 
 			conn := makeRequestToServer(tC, srv, t)
 			defer conn.Close()
@@ -1153,12 +1093,7 @@ func TestChangesCounting(t *testing.T) {
 		t.Run(tC.desc, func(t *testing.T) {
 			app, srv, logger := setupAppAndConnection(tC, t)
 
-			go func() {
-				err := Listen(srv, app, logger)
-				if err != nil {
-					t.Errorf("failed to setup listener: %v", err)
-				}
-			}()
+			go func() { Listen(srv, app, logger) }()
 
 			conn := makeRequestToServer(tC, srv, t)
 			defer conn.Close()
