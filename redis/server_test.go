@@ -1,14 +1,14 @@
 package redis
 
 import (
-	"bufio"
 	"bytes"
 	"log/slog"
 	"net"
 	"reflect"
-	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/net/nettest"
 )
 
 var testLogOpts = slog.HandlerOptions{
@@ -29,112 +29,9 @@ func (c TestClockTimer) Now() time.Time {
 	return c.mockNow
 }
 
-type ConnectionTester struct {
-	request        *bufio.Reader
-	response       []byte
-	deadline       time.Time
-	closeCallCount int
-}
-
-func NewConnection(data string) *ConnectionTester {
-	buf := strings.NewReader(data)
-	connection := &ConnectionTester{
-		request:        bufio.NewReader(buf),
-		response:       nil,
-		closeCallCount: 0,
-	}
-	return connection
-}
-
-func (c *ConnectionTester) Read(b []byte) (int, error) {
-	return c.request.Read(b)
-}
-
-func (c *ConnectionTester) Write(b []byte) (int, error) {
-	c.response = b
-	return len(b), nil
-}
-
-func (c *ConnectionTester) Close() error {
-	c.closeCallCount += 1
-	return nil
-}
-
-func (c *ConnectionTester) LocalAddr() net.Addr {
-	return nil
-}
-
-func (c *ConnectionTester) RemoteAddr() net.Addr {
-	return nil
-}
-
-func (c *ConnectionTester) SetDeadline(t time.Time) error {
-	c.deadline = t
-	return nil
-}
-
-func (c *ConnectionTester) SetReadDeadline(t time.Time) error {
-	return nil
-}
-
-func (c *ConnectionTester) SetWriteDeadline(t time.Time) error {
-	return nil
-}
-
-func TestReadonlyCommands(t *testing.T) {
-	testCases := []struct {
-		desc string
-		data string
-		want []byte
-	}{
-		{
-			desc: "ping command",
-			data: "*1\r\n$4\r\nping\r\n",
-			want: []byte("+PONG\r\n"),
-		},
-		{
-			desc: "invalid ping command",
-			data: "*1\r\n$4\r\npang\r\n",
-			want: []byte("-invalid command: 'pang'\r\n"),
-		},
-		{
-			desc: "echo command",
-			data: "*2\r\n$4\r\necho\r\n$11\r\nhello world\r\n",
-			want: []byte("$11\r\nhello world\r\n"),
-		},
-		{
-			desc: "empty echo command",
-			data: "*2\r\n$4\r\necho\r\n$0\r\n\r\n",
-			want: []byte("$0\r\n\r\n"),
-		},
-		{
-			desc: "invalid echo command",
-			data: "*1\r\n$4\r\necho\r\n",
-			want: []byte("-wrong number of arguments.\r\n"),
-		},
-	}
-	for _, tC := range testCases {
-		t.Run(tC.desc, func(t *testing.T) {
-			connection := NewConnection(tC.data)
-			timer := TestClockTimer{mockNow: time.Now()}
-			logger := NewTestLogger()
-			app := NewApplication(nil, timer, logger)
-
-			messenger := handleRequests(app.ProcessRequest, logger)
-			ProcessConnection(connection, &messenger, logger)
-			messenger.Cancel()
-
-			got := connection.response
-
-			if connection.closeCallCount != 1 {
-				t.Errorf("connection not closed properly. Call count %d", connection.closeCallCount)
-			}
-
-			if !reflect.DeepEqual(got, tC.want) {
-				t.Errorf("got: %#v. want: %#v", string(got), string(tC.want))
-			}
-		})
-	}
+func getFuture(now time.Time, delta int) *time.Time {
+	future := now.Add(time.Duration(delta) * time.Second)
+	return &future
 }
 
 type mapState struct {
@@ -152,8 +49,7 @@ type testCase struct {
 	wantState    mapState
 }
 
-func setupAppAndConnection(tC testCase) (*ConnectionTester, *Application, *slog.Logger) {
-	connection := NewConnection(tC.data)
+func setupAppAndConnection(tC testCase, t *testing.T) (*Application, net.Listener, *slog.Logger) {
 	timer := TestClockTimer{mockNow: tC.now}
 	logger := NewTestLogger()
 	app := NewApplication(nil, timer, logger)
@@ -161,15 +57,33 @@ func setupAppAndConnection(tC testCase) (*ConnectionTester, *Application, *slog.
 	app.state.keyspace.stringMap = tC.initialState.sm
 	app.state.keyspace.listMap = tC.initialState.lm
 
-	return connection, app, logger
+	srv, err := nettest.NewLocalListener("tcp")
+	if err != nil {
+		t.Fatalf("failed to setup listener: %v", err)
+	}
+
+	return app, srv, logger
 }
 
-func assertConnectionAndAppState(t *testing.T, tC testCase, connection *ConnectionTester, app *Application) {
-	got := connection.response
-
-	if connection.closeCallCount != 1 {
-		t.Errorf("connection not closed properly. Call count %d", connection.closeCallCount)
+func makeRequestToServer(tC testCase, srv net.Listener, t *testing.T) net.Conn {
+	conn, err := net.Dial("tcp", srv.Addr().String())
+	if err != nil {
+		t.Fatalf("could not establish connection: %v", err)
 	}
+
+	if _, err := conn.Write([]byte(tC.data)); err != nil {
+		t.Fatalf("could not write payload to server: %v", err)
+	}
+	return conn
+}
+
+func assertConnectionAndAppState(t *testing.T, tC testCase, connection net.Conn, app *Application) {
+	buf := make([]byte, 4096)
+	n, err := connection.Read(buf)
+	if err != nil {
+		t.Fatalf("failed to read from connection: %s", err)
+	}
+	got := buf[:n]
 
 	if !reflect.DeepEqual(got, tC.want) {
 		t.Errorf("got: %#v. want: %#v", string(got), string(tC.want))
@@ -190,6 +104,80 @@ func assertConnectionAndAppState(t *testing.T, tC testCase, connection *Connecti
 
 	if !reflect.DeepEqual(gotLmap, tC.wantState.lm) {
 		t.Errorf("got: %#v. want: %#v", gotLmap, tC.wantState.lm)
+	}
+}
+
+func TestReadonlyCommands(t *testing.T) {
+	now := time.Now()
+	initialState := mapState{
+		ks: map[string]keyspaceEntry{},
+		sm: map[string]string{},
+		lm: map[string]list{},
+	}
+	wantState := mapState{
+		ks: map[string]keyspaceEntry{},
+		sm: map[string]string{},
+		lm: map[string]list{},
+	}
+
+	testCases := []testCase{
+		{
+			now:          now,
+			desc:         "ping command",
+			data:         "*1\r\n$4\r\nping\r\n",
+			want:         []byte("+PONG\r\n"),
+			initialState: initialState,
+			wantState:    wantState,
+		},
+		{
+			now:          now,
+			desc:         "invalid ping command",
+			data:         "*1\r\n$4\r\npang\r\n",
+			want:         []byte("-invalid command: 'pang'\r\n"),
+			initialState: initialState,
+			wantState:    wantState,
+		},
+		{
+			now:          now,
+			desc:         "echo command",
+			data:         "*2\r\n$4\r\necho\r\n$11\r\nhello world\r\n",
+			want:         []byte("$11\r\nhello world\r\n"),
+			initialState: initialState,
+			wantState:    wantState,
+		},
+		{
+			now:          now,
+			desc:         "empty echo command",
+			data:         "*2\r\n$4\r\necho\r\n$0\r\n\r\n",
+			want:         []byte("$0\r\n\r\n"),
+			initialState: initialState,
+			wantState:    wantState,
+		},
+		{
+			now:          now,
+			desc:         "invalid echo command",
+			data:         "*1\r\n$4\r\necho\r\n",
+			want:         []byte("-wrong number of arguments.\r\n"),
+			initialState: initialState,
+			wantState:    wantState,
+		},
+	}
+	for _, tC := range testCases {
+		t.Run(tC.desc, func(t *testing.T) {
+			app, srv, logger := setupAppAndConnection(tC, t)
+
+			go func() {
+				err := Listen(srv, app, logger)
+				if err != nil {
+					t.Errorf("failed to setup listener: %v", err)
+				}
+			}()
+
+			conn := makeRequestToServer(tC, srv, t)
+			defer conn.Close()
+
+			assertConnectionAndAppState(t, tC, conn, app)
+		})
 	}
 }
 
@@ -247,13 +235,19 @@ func TestSetCommand(t *testing.T) {
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			connection, app, logger := setupAppAndConnection(tC)
+			app, srv, logger := setupAppAndConnection(tC, t)
 
-			messenger := handleRequests(app.ProcessRequest, logger)
-			ProcessConnection(connection, &messenger, logger)
-			messenger.Cancel()
+			go func() {
+				err := Listen(srv, app, logger)
+				if err != nil {
+					t.Errorf("failed to setup listener: %v", err)
+				}
+			}()
 
-			assertConnectionAndAppState(t, tC, connection, app)
+			conn := makeRequestToServer(tC, srv, t)
+			defer conn.Close()
+
+			assertConnectionAndAppState(t, tC, conn, app)
 		})
 	}
 }
@@ -313,20 +307,21 @@ func TestGetCommand(t *testing.T) {
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			connection, app, logger := setupAppAndConnection(tC)
+			app, srv, logger := setupAppAndConnection(tC, t)
 
-			messenger := handleRequests(app.ProcessRequest, logger)
-			ProcessConnection(connection, &messenger, logger)
-			messenger.Cancel()
+			go func() {
+				err := Listen(srv, app, logger)
+				if err != nil {
+					t.Errorf("failed to setup listener: %v", err)
+				}
+			}()
 
-			assertConnectionAndAppState(t, tC, connection, app)
+			conn := makeRequestToServer(tC, srv, t)
+			defer conn.Close()
+
+			assertConnectionAndAppState(t, tC, conn, app)
 		})
 	}
-}
-
-func getFuture(now time.Time, delta int) *time.Time {
-	future := now.Add(time.Duration(delta) * time.Second)
-	return &future
 }
 
 func TestSetWithExpiryCommand(t *testing.T) {
@@ -369,13 +364,19 @@ func TestSetWithExpiryCommand(t *testing.T) {
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			connection, app, logger := setupAppAndConnection(tC)
+			app, srv, logger := setupAppAndConnection(tC, t)
 
-			messenger := handleRequests(app.ProcessRequest, logger)
-			ProcessConnection(connection, &messenger, logger)
-			messenger.Cancel()
+			go func() {
+				err := Listen(srv, app, logger)
+				if err != nil {
+					t.Errorf("failed to setup listener: %v", err)
+				}
+			}()
 
-			assertConnectionAndAppState(t, tC, connection, app)
+			conn := makeRequestToServer(tC, srv, t)
+			defer conn.Close()
+
+			assertConnectionAndAppState(t, tC, conn, app)
 		})
 	}
 }
@@ -419,13 +420,19 @@ func TestActiveKeyExpiration(t *testing.T) {
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			connection, app, logger := setupAppAndConnection(tC)
+			app, srv, logger := setupAppAndConnection(tC, t)
 
-			messenger := handleRequests(app.ProcessRequest, logger)
-			ProcessConnection(connection, &messenger, logger)
-			messenger.Cancel()
+			go func() {
+				err := Listen(srv, app, logger)
+				if err != nil {
+					t.Errorf("failed to setup listener: %v", err)
+				}
+			}()
 
-			assertConnectionAndAppState(t, tC, connection, app)
+			conn := makeRequestToServer(tC, srv, t)
+			defer conn.Close()
+
+			assertConnectionAndAppState(t, tC, conn, app)
 		})
 	}
 }
@@ -485,13 +492,19 @@ func TestExpireCommand(t *testing.T) {
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			connection, app, logger := setupAppAndConnection(tC)
+			app, srv, logger := setupAppAndConnection(tC, t)
 
-			messenger := handleRequests(app.ProcessRequest, logger)
-			ProcessConnection(connection, &messenger, logger)
-			messenger.Cancel()
+			go func() {
+				err := Listen(srv, app, logger)
+				if err != nil {
+					t.Errorf("failed to setup listener: %v", err)
+				}
+			}()
 
-			assertConnectionAndAppState(t, tC, connection, app)
+			conn := makeRequestToServer(tC, srv, t)
+			defer conn.Close()
+
+			assertConnectionAndAppState(t, tC, conn, app)
 		})
 	}
 }
@@ -615,13 +628,19 @@ func TestExistsCommand(t *testing.T) {
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			connection, app, logger := setupAppAndConnection(tC)
+			app, srv, logger := setupAppAndConnection(tC, t)
 
-			messenger := handleRequests(app.ProcessRequest, logger)
-			ProcessConnection(connection, &messenger, logger)
-			messenger.Cancel()
+			go func() {
+				err := Listen(srv, app, logger)
+				if err != nil {
+					t.Errorf("failed to setup listener: %v", err)
+				}
+			}()
 
-			assertConnectionAndAppState(t, tC, connection, app)
+			conn := makeRequestToServer(tC, srv, t)
+			defer conn.Close()
+
+			assertConnectionAndAppState(t, tC, conn, app)
 		})
 	}
 }
@@ -768,13 +787,19 @@ func TestDeleteCommand(t *testing.T) {
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			connection, app, logger := setupAppAndConnection(tC)
+			app, srv, logger := setupAppAndConnection(tC, t)
 
-			messenger := handleRequests(app.ProcessRequest, logger)
-			ProcessConnection(connection, &messenger, logger)
-			messenger.Cancel()
+			go func() {
+				err := Listen(srv, app, logger)
+				if err != nil {
+					t.Errorf("failed to setup listener: %v", err)
+				}
+			}()
 
-			assertConnectionAndAppState(t, tC, connection, app)
+			conn := makeRequestToServer(tC, srv, t)
+			defer conn.Close()
+
+			assertConnectionAndAppState(t, tC, conn, app)
 		})
 	}
 }
@@ -852,13 +877,19 @@ func TestIncrementCommand(t *testing.T) {
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			connection, app, logger := setupAppAndConnection(tC)
+			app, srv, logger := setupAppAndConnection(tC, t)
 
-			messenger := handleRequests(app.ProcessRequest, logger)
-			ProcessConnection(connection, &messenger, logger)
-			messenger.Cancel()
+			go func() {
+				err := Listen(srv, app, logger)
+				if err != nil {
+					t.Errorf("failed to setup listener: %v", err)
+				}
+			}()
 
-			assertConnectionAndAppState(t, tC, connection, app)
+			conn := makeRequestToServer(tC, srv, t)
+			defer conn.Close()
+
+			assertConnectionAndAppState(t, tC, conn, app)
 		})
 	}
 }
@@ -936,13 +967,19 @@ func TestDecrementCommand(t *testing.T) {
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			connection, app, logger := setupAppAndConnection(tC)
+			app, srv, logger := setupAppAndConnection(tC, t)
 
-			messenger := handleRequests(app.ProcessRequest, logger)
-			ProcessConnection(connection, &messenger, logger)
-			messenger.Cancel()
+			go func() {
+				err := Listen(srv, app, logger)
+				if err != nil {
+					t.Errorf("failed to setup listener: %v", err)
+				}
+			}()
 
-			assertConnectionAndAppState(t, tC, connection, app)
+			conn := makeRequestToServer(tC, srv, t)
+			defer conn.Close()
+
+			assertConnectionAndAppState(t, tC, conn, app)
 		})
 	}
 }
@@ -1002,13 +1039,19 @@ func TestRPushCommand(t *testing.T) {
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			connection, app, logger := setupAppAndConnection(tC)
+			app, srv, logger := setupAppAndConnection(tC, t)
 
-			messenger := handleRequests(app.ProcessRequest, logger)
-			ProcessConnection(connection, &messenger, logger)
-			messenger.Cancel()
+			go func() {
+				err := Listen(srv, app, logger)
+				if err != nil {
+					t.Errorf("failed to setup listener: %v", err)
+				}
+			}()
 
-			assertConnectionAndAppState(t, tC, connection, app)
+			conn := makeRequestToServer(tC, srv, t)
+			defer conn.Close()
+
+			assertConnectionAndAppState(t, tC, conn, app)
 		})
 	}
 }
@@ -1068,13 +1111,19 @@ func TestLPushCommand(t *testing.T) {
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			connection, app, logger := setupAppAndConnection(tC)
+			app, srv, logger := setupAppAndConnection(tC, t)
 
-			messenger := handleRequests(app.ProcessRequest, logger)
-			ProcessConnection(connection, &messenger, logger)
-			messenger.Cancel()
+			go func() {
+				err := Listen(srv, app, logger)
+				if err != nil {
+					t.Errorf("failed to setup listener: %v", err)
+				}
+			}()
 
-			assertConnectionAndAppState(t, tC, connection, app)
+			conn := makeRequestToServer(tC, srv, t)
+			defer conn.Close()
+
+			assertConnectionAndAppState(t, tC, conn, app)
 		})
 	}
 }
@@ -1102,18 +1151,24 @@ func TestChangesCounting(t *testing.T) {
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			connection, app, logger := setupAppAndConnection(tC)
+			app, srv, logger := setupAppAndConnection(tC, t)
 
-			messenger := handleRequests(app.ProcessRequest, logger)
-			ProcessConnection(connection, &messenger, logger)
-			messenger.Cancel()
+			go func() {
+				err := Listen(srv, app, logger)
+				if err != nil {
+					t.Errorf("failed to setup listener: %v", err)
+				}
+			}()
 
-			assertConnectionAndAppState(t, tC, connection, app)
+			conn := makeRequestToServer(tC, srv, t)
+			defer conn.Close()
 
-			if app.state.modifications != 1 {
+			assertConnectionAndAppState(t, tC, conn, app)
+
+			mods := app.state.keyspace.modifications
+			if mods != 1 {
 				t.Error("expected a single write count")
 			}
-
 		})
 	}
 }

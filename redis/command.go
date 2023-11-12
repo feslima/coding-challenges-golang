@@ -42,6 +42,13 @@ var cmdParseTable = map[string]Command{
 	"lpush":    LPUSH,
 }
 
+type Cmd struct {
+	app       *Application
+	processed []string
+	cmd       Command
+	args      []string
+}
+
 func (c *Cmd) Parse() error {
 	lower := strings.ToLower(c.processed[0])
 	cmd, ok := cmdParseTable[lower]
@@ -55,7 +62,7 @@ func (c *Cmd) Parse() error {
 	return nil
 }
 
-func (c *Cmd) Process(a *Application) (string, error) {
+func (c *Cmd) Process() (string, error) {
 	err := c.Parse()
 	if err != nil {
 		return "", err
@@ -72,37 +79,37 @@ func (c *Cmd) Process(a *Application) (string, error) {
 		return processEcho(c.args)
 
 	case SET:
-		return processSet(c.args, a)
+		return processSet(c.args, c.app)
 
 	case GET:
-		return processGet(c.args, a)
+		return processGet(c.args, c.app)
 
 	case CONFIG:
-		return processConfig(c.args, a)
+		return processConfig(c.args, c.app)
 
 	case EXPIRE:
-		return processExpire(c.args, a)
+		return processExpire(c.args, c.app)
 
 	case EXPIREAT:
-		return processExpireAt(c.args, a)
+		return processExpireAt(c.args, c.app)
 
 	case EXISTS:
-		return processExists(c.args, a)
+		return processExists(c.args, c.app)
 
 	case DEL:
-		return processDelete(c.args, a)
+		return processDelete(c.args, c.app)
 
 	case INCR:
-		return processIncrement(c.args, a)
+		return processIncrement(c.args, c.app)
 
 	case DECR:
-		return processDecrement(c.args, a)
+		return processDecrement(c.args, c.app)
 
 	case RPUSH:
-		return processRPush(c.args, a)
+		return processRPush(c.args, c.app)
 
 	case LPUSH:
-		return processLPush(c.args, a)
+		return processLPush(c.args, c.app)
 	}
 }
 
@@ -151,9 +158,7 @@ func processSet(args []string, app *Application) (string, error) {
 	} else {
 		expiry = nil
 	}
-
 	app.state.keyspace.SetKey(key, value, expiry)
-	app.state.CountModification()
 
 	return OK_SIMPLE_STRING, nil
 }
@@ -226,7 +231,6 @@ func processExpire(args []string, app *Application) (string, error) {
 	if !ok {
 		return SerializeInteger(0), nil
 	}
-	app.state.CountModification()
 
 	return SerializeInteger(1), nil
 }
@@ -250,7 +254,6 @@ func processExpireAt(args []string, app *Application) (string, error) {
 	if !ok {
 		return SerializeInteger(0), nil
 	}
-	app.state.CountModification()
 
 	return SerializeInteger(1), nil
 }
@@ -277,7 +280,6 @@ func processDelete(args []string, app *Application) (string, error) {
 	}
 
 	keyCount := app.state.keyspace.BulkDelete(args)
-	app.state.CountModification()
 
 	finalCount := 0
 	for _, c := range keyCount {
@@ -299,7 +301,6 @@ func processIncrement(args []string, app *Application) (string, error) {
 		return SerializeSimpleError(err.Error()), nil
 	}
 
-	app.state.CountModification()
 	return SerializeInteger(value), nil
 }
 
@@ -314,7 +315,6 @@ func processDecrement(args []string, app *Application) (string, error) {
 		return SerializeSimpleError(err.Error()), nil
 	}
 
-	app.state.CountModification()
 	return SerializeInteger(value), nil
 }
 
@@ -331,7 +331,6 @@ func processRPush(args []string, app *Application) (string, error) {
 		return SerializeSimpleError(err.Error()), nil
 	}
 
-	app.state.CountModification()
 	return SerializeInteger(length), nil
 }
 
@@ -348,6 +347,5 @@ func processLPush(args []string, app *Application) (string, error) {
 		return SerializeSimpleError(err.Error()), nil
 	}
 
-	app.state.CountModification()
 	return SerializeInteger(length), nil
 }

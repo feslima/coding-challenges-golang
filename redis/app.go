@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -23,37 +24,59 @@ func (c RealClockTimer) Now() time.Time {
 	return time.Now()
 }
 
+type ApplicationClient struct {
+	conn              net.Conn
+	isOnSubscribeMode bool
+}
+
 type Application struct {
-	state  *ApplicationState
-	config *ApplicationConfiguration
-	logger *slog.Logger
-	clock  ClockTimer
+	state   *ApplicationState
+	config  *ApplicationConfiguration
+	logger  *slog.Logger
+	clock   ClockTimer
+	clients map[string]*ApplicationClient
 }
 
 func NewApplication(config *ApplicationConfiguration, timer ClockTimer, l *slog.Logger) *Application {
 	mutex := &sync.RWMutex{}
 	state := ApplicationState{
-		keyspace:      *newKeyspace(timer, mutex),
-		mutex:         mutex,
-		modifications: 0,
+		keyspace: *newKeyspace(timer, mutex),
+		mutex:    mutex,
 	}
 	return &Application{
-		state:  &state,
-		config: config,
-		clock:  timer,
-		logger: l,
+		state:   &state,
+		config:  config,
+		clock:   timer,
+		logger:  l,
+		clients: make(map[string]*ApplicationClient),
 	}
 }
 
-func (app *Application) ProcessRequest(raw []byte) ([]byte, error) {
-	command, err := DecodeMessage(raw)
+func (app *Application) AddClient(c net.Conn) {
+	addr := c.RemoteAddr().String()
+	parsed := net.ParseIP(addr)
+	if parsed == nil {
+		// TODO: better handle this silent failure
+		// leaving like this because we need to use net.Pipe in testing
+		app.logger.Error(fmt.Sprintf("invalid ip address '%s'", addr))
+		return
+	}
+
+	app.clients[parsed.To4().String()] = &ApplicationClient{
+		conn:              c,
+		isOnSubscribeMode: false,
+	}
+}
+
+func (app *Application) ProcessRequest(m Message) ([]byte, error) {
+	command, err := DecodeMessage(m.raw, app)
 	if err != nil {
-		app.logger.Error("error decoding message: " + fmt.Sprintf("%v", err))
+		app.logger.Error("error decoding message: " + fmt.Sprintf("%s", err))
 		return []byte{}, err
 	}
-	response, err := command.Process(app)
+	response, err := command.Process()
 	if err != nil {
-		app.logger.Error("error parsing message: " + fmt.Sprintf("%v", err))
+		app.logger.Error("error parsing message: " + fmt.Sprintf("%s", err))
 		return []byte{}, err
 	}
 
@@ -61,23 +84,15 @@ func (app *Application) ProcessRequest(raw []byte) ([]byte, error) {
 }
 
 type ApplicationState struct {
-	mutex         *sync.RWMutex
-	keyspace      keyspace
-	modifications int
-}
-
-func (as *ApplicationState) CountModification() {
-	as.mutex.Lock()
-	defer as.mutex.Unlock()
-
-	as.modifications += 1
+	mutex    *sync.RWMutex
+	keyspace keyspace
 }
 
 func (as *ApplicationState) ResetCounter() {
 	as.mutex.Lock()
 	defer as.mutex.Unlock()
 
-	as.modifications = 0
+	as.keyspace.modifications = 0
 }
 
 func (as *ApplicationState) Save(out io.Writer) error {
@@ -150,7 +165,7 @@ func (as *ApplicationState) Load(r io.Reader, a *Application) error {
 
 	for s.Scan() {
 		line := s.Bytes()
-		cmd, err := DecodeMessage(line)
+		cmd, err := DecodeMessage(line, a)
 		if err != nil {
 			continue
 		}
@@ -159,7 +174,7 @@ func (as *ApplicationState) Load(r io.Reader, a *Application) error {
 			continue
 		}
 
-		_, err = cmd.Process(a)
+		_, err = cmd.Process()
 		if err != nil {
 			continue
 		}
@@ -208,7 +223,7 @@ func (app *Application) SetupKeyExpirer() func() {
 
 func SaveAfterNChanges(n int64, app *Application) {
 	app.state.mutex.RLock()
-	modifications := int64(app.state.modifications)
+	modifications := int64(app.state.keyspace.modifications)
 	app.state.mutex.RUnlock()
 
 	if modifications >= n {

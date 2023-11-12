@@ -29,12 +29,6 @@ func getFirstCRIndex(raw []byte) int64 {
 	return crIndex
 }
 
-type Cmd struct {
-	processed []string
-	cmd       Command
-	args      []string
-}
-
 func decodeBulkString(raw []byte) ([]string, error) {
 	rawLength := []rune{}
 	dataStartIndex := int64(0)
@@ -108,14 +102,14 @@ func decodeArray(raw []byte) ([]string, error) {
 	return parsed, nil
 }
 
-func DecodeMessage(rawMessage []byte) (*Cmd, error) {
+func DecodeMessage(rawMessage []byte, app *Application) (*Cmd, error) {
 	if len(rawMessage) == 0 {
 		return nil, errors.New("Got an empty message")
 	}
 	firstByte := rawMessage[0]
 	remaining := rawMessage[1:]
 
-	cmd := Cmd{processed: nil}
+	cmd := Cmd{processed: nil, app: app}
 
 	var err error
 	switch firstByte {

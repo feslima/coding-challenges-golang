@@ -13,11 +13,12 @@ type keyspaceEntry struct {
 }
 
 type keyspace struct {
-	clock     ClockTimer
-	mutex     *sync.RWMutex
-	keys      map[string]keyspaceEntry
-	stringMap map[string]string
-	listMap   map[string]list
+	clock         ClockTimer
+	mutex         *sync.RWMutex
+	keys          map[string]keyspaceEntry
+	stringMap     map[string]string
+	listMap       map[string]list
+	modifications int
 }
 
 type KeyResult struct {
@@ -38,11 +39,12 @@ func (kr KeyResult) IsString() bool {
 
 func newKeyspace(clock ClockTimer, m *sync.RWMutex) *keyspace {
 	return &keyspace{
-		mutex:     m,
-		clock:     clock,
-		keys:      make(map[string]keyspaceEntry),
-		stringMap: make(map[string]string),
-		listMap:   make(map[string]list),
+		mutex:         m,
+		clock:         clock,
+		keys:          make(map[string]keyspaceEntry),
+		stringMap:     make(map[string]string),
+		listMap:       make(map[string]list),
+		modifications: 0,
 	}
 }
 
@@ -66,6 +68,7 @@ func (ks *keyspace) Get(key string) KeyResult {
 		}
 
 		delete(ks.keys, key)
+		ks.modifications += 1
 		ks.mutex.Unlock()
 
 		return KeyResult{}
@@ -107,6 +110,7 @@ func (ks *keyspace) Expire(key string, duration int64) bool {
 
 	ke.expires = &final
 	ks.keys[key] = ke
+	ks.modifications += 1
 
 	return true
 }
@@ -122,6 +126,7 @@ func (ks *keyspace) ExpireAt(key string, deadline time.Time) bool {
 
 	ke.expires = &deadline
 	ks.keys[key] = ke
+	ks.modifications += 1
 
 	return true
 }
@@ -169,6 +174,7 @@ func (ks *keyspace) BulkDelete(keys []string) map[string]int {
 			}
 
 			delete(ks.keys, key)
+			ks.modifications += 1
 
 			if kcOk {
 				keyCount[key] += 1
@@ -198,14 +204,15 @@ func (ks *keyspace) SetStringKey(key string, value string, exp *ExpiryDuration) 
 		delete(ks.listMap, key)
 	}
 	ks.stringMap[key] = value
-	newKe := keyspaceEntry{group: "string", expires: nil}
+	newKey := keyspaceEntry{group: "string", expires: nil}
 
 	if exp != nil {
 		final := ks.clock.Now().Add(time.Duration(exp.magnitude) * exp.resolution)
-		newKe.expires = &final
+		newKey.expires = &final
 	}
 
-	ks.keys[key] = newKe
+	ks.keys[key] = newKey
+	ks.modifications += 1
 }
 
 func (ks *keyspace) SetListKey(key string, value []string, exp *ExpiryDuration) {
@@ -217,14 +224,15 @@ func (ks *keyspace) SetListKey(key string, value []string, exp *ExpiryDuration) 
 		delete(ks.stringMap, key)
 	}
 	ks.listMap[key] = NewListFromSlice(value)
-	newKe := keyspaceEntry{group: "string", expires: nil}
+	newKey := keyspaceEntry{group: "string", expires: nil}
 
 	if exp != nil {
 		final := ks.clock.Now().Add(time.Duration(exp.magnitude) * exp.resolution)
-		newKe.expires = &final
+		newKey.expires = &final
 	}
 
-	ks.keys[key] = newKe
+	ks.keys[key] = newKey
+	ks.modifications += 1
 }
 
 func (ks *keyspace) SetKey(key string, value interface{}, exp *ExpiryDuration) {
@@ -267,6 +275,7 @@ func (ks *keyspace) IncrementBy(key string, value int) (int, error) {
 	newVal := int(intVal) + value
 	ks.stringMap[key] = fmt.Sprintf("%d", newVal)
 
+	ks.modifications += 1
 	return newVal, nil
 }
 
@@ -296,6 +305,7 @@ func (ks *keyspace) PushToTail(key string, values []string) (int, error) {
 	listVal.AppendSliceToTail(values)
 
 	ks.listMap[key] = listVal
+	ks.modifications += 1
 	return listVal.size, nil
 }
 
@@ -325,6 +335,7 @@ func (ks *keyspace) PushToHead(key string, values []string) (int, error) {
 	listVal.AppendSliceToHead(values)
 
 	ks.listMap[key] = listVal
+	ks.modifications += 1
 	return listVal.size, nil
 }
 

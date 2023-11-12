@@ -66,7 +66,7 @@ func TestStateSave(t *testing.T) {
 		t.Fatalf("%s", err)
 	}
 
-	if app.state.modifications != 0 {
+	if app.state.keyspace.modifications != 0 {
 		t.Fatal("modifications counter must be reset after calling save")
 	}
 
@@ -172,7 +172,7 @@ func TestStateLoad(t *testing.T) {
 		t.Fatalf("%s", err)
 	}
 
-	if app.state.modifications != 0 {
+	if app.state.keyspace.modifications != 0 {
 		t.Fatal("modifications counter must be 0 after calling load")
 	}
 

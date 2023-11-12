@@ -19,33 +19,16 @@ func NewServer(host string, port int, l *slog.Logger) (net.Listener, error) {
 	return server, err
 }
 
-type ConnectionHandler func([]byte) ([]byte, error)
+type ConnectionHandler func(Message) ([]byte, error)
 
-func handleRequests(h ConnectionHandler, l *slog.Logger) messenger {
-	messenger := messenger{
-		in:   make(chan []byte),
-		out:  make(chan []byte),
+func Listen(server net.Listener, app *Application, l *slog.Logger) error {
+	messenger := &messenger{
+		app:  app,
+		in:   make(chan Message),
 		done: make(chan struct{}),
 	}
-	go func() {
-		for raw := range messenger.in {
-			result, err := h(raw)
-			if err != nil {
-				l.Error(fmt.Sprintf("%v", err))
-				messenger.out <- []byte(SerializeSimpleError(err.Error()))
-				continue
-			}
-			messenger.out <- result
-		}
-	}()
+	go messenger.handleRequests()
 
-	return messenger
-}
-
-func Listen(server net.Listener, handler ConnectionHandler, l *slog.Logger) error {
-	defer server.Close()
-
-	messenger := handleRequests(handler, l)
 	for {
 		conn, err := server.Accept()
 		if err != nil {
@@ -53,15 +36,16 @@ func Listen(server net.Listener, handler ConnectionHandler, l *slog.Logger) erro
 			return err
 		}
 
-		go ProcessConnection(conn, &messenger, l)
+		app.AddClient(conn)
+		go ProcessConnection(conn, messenger, l)
 	}
 }
 
 var errorResponse []byte = []byte("-couldn't process request\r\n")
 
 type messenger struct {
-	in   chan []byte
-	out  chan []byte
+	app  *Application
+	in   chan Message
 	done chan struct{}
 }
 
@@ -69,8 +53,40 @@ func (m *messenger) Cancel() func() {
 	return func() { close(m.done) }
 }
 
+func (messenger *messenger) handleRequests() {
+	l := messenger.app.logger
+	for {
+		select {
+		case <-messenger.done:
+			break
+		case m := <-messenger.in:
+			response, err := messenger.app.ProcessRequest(m)
+			if err != nil {
+				l.Error(fmt.Sprintf("%v", err))
+
+				_, err = m.conn.Write([]byte(SerializeSimpleError(err.Error())))
+				if err != nil {
+					l.Error(fmt.Sprintf("%v", err))
+				}
+				continue
+			}
+
+			_, err = m.conn.Write(response)
+			if err != nil {
+				l.Error("failed to write error response")
+			}
+		}
+	}
+}
+
+type Message struct {
+	raw  []byte
+	conn net.Conn
+}
+
 func ProcessConnection(conn net.Conn, m *messenger, l *slog.Logger) {
 	defer conn.Close()
+
 	reader := bufio.NewReader(conn)
 	buf := make([]byte, reader.Size())
 
@@ -97,15 +113,7 @@ func ProcessConnection(conn net.Conn, m *messenger, l *slog.Logger) {
 		select {
 		case <-m.done:
 			break
-		case m.in <- read:
-		}
-
-		for result := range m.out {
-			_, err := conn.Write(result)
-			if err != nil {
-				l.Error("failed to write error response")
-			}
-			break
+		case m.in <- Message{raw: read, conn: conn}:
 		}
 	}
 }

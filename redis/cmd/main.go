@@ -30,6 +30,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	defer server.Close()
 
 	config, err := redis.NewApplicationConfiguration("no", "3600 1 300 100 60 10000")
 	if err != nil {
@@ -43,7 +44,7 @@ func main() {
 	closeSavers := app.SetupSnapshotSavers()
 	closeChecker := app.SetupKeyExpirer()
 
-	err = redis.Listen(server, app.ProcessRequest, logger)
+	err = redis.Listen(server, app, logger)
 	if err != nil {
 		closeSavers()
 		closeChecker()

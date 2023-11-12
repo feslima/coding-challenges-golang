@@ -3,9 +3,11 @@ package redis
 import (
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestBulkStringsDeserialization(t *testing.T) {
+	now := time.Now()
 	cases := []struct {
 		desc      string
 		raw       []byte
@@ -69,7 +71,10 @@ func TestBulkStringsDeserialization(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.desc, func(t *testing.T) {
-			got, err := DecodeMessage(c.raw)
+			timer := TestClockTimer{mockNow: now}
+			logger := NewTestLogger()
+			app := NewApplication(nil, timer, logger)
+			got, err := DecodeMessage(c.raw, app)
 
 			if c.wantError {
 				if err == nil {
@@ -93,6 +98,7 @@ func TestBulkStringsDeserialization(t *testing.T) {
 }
 
 func TestArrayDeserialization(t *testing.T) {
+	now := time.Now()
 	testCases := []struct {
 		desc      string
 		raw       []byte
@@ -132,7 +138,10 @@ func TestArrayDeserialization(t *testing.T) {
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			got, err := DecodeMessage(tC.raw)
+			timer := TestClockTimer{mockNow: now}
+			logger := NewTestLogger()
+			app := NewApplication(nil, timer, logger)
+			got, err := DecodeMessage(tC.raw, app)
 
 			if tC.wantError {
 				if err == nil {
