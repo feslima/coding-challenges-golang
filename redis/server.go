@@ -79,9 +79,21 @@ func (messenger *messenger) handleRequests() {
 				continue
 			}
 
-			_, err = m.conn.Write(response)
-			if err != nil {
-				l.Error("failed to write error response")
+			if response == nil {
+				l.Error("got nil response struct")
+				continue
+			}
+
+			for _, c := range response.targets {
+				if c == nil {
+					l.Error("got a nil connection object")
+					continue
+				}
+				_, err = c.Write(response.message)
+				if err != nil {
+					l.Error("failed to write error response")
+					continue
+				}
 			}
 		}
 	}

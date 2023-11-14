@@ -3,12 +3,18 @@ package redis
 import (
 	"errors"
 	"fmt"
+	"net"
 	"strconv"
 	"strings"
 	"time"
 )
 
 type Command string
+
+type CommandResult struct {
+	message []byte
+	targets []net.Conn
+}
 
 const (
 	PING     = "PING"
@@ -47,6 +53,7 @@ type Cmd struct {
 	processed []string
 	cmd       Command
 	args      []string
+	sender    net.Conn
 }
 
 func (c *Cmd) Parse() error {
@@ -62,55 +69,62 @@ func (c *Cmd) Parse() error {
 	return nil
 }
 
-func (c *Cmd) Process() (string, error) {
+func (c *Cmd) Process() (*CommandResult, error) {
 	err := c.Parse()
+	targets := []net.Conn{c.sender}
 	if err != nil {
-		return "", err
+		return &CommandResult{message: []byte(""), targets: targets}, err
 	}
+
+	var r string
 
 	switch c.cmd {
 	default:
-		return "", errors.New("invalid command")
+		r = ""
+		err = errors.New("invalid command")
 
 	case PING:
-		return "+PONG\r\n", nil
+		r = "+PONG\r\n"
+		err = nil
 
 	case ECHO:
-		return processEcho(c.args)
+		r, err = processEcho(c.args)
 
 	case SET:
-		return processSet(c.args, c.app)
+		r, err = processSet(c.args, c.app)
 
 	case GET:
-		return processGet(c.args, c.app)
+		r, err = processGet(c.args, c.app)
 
 	case CONFIG:
-		return processConfig(c.args, c.app)
+		r, err = processConfig(c.args, c.app)
 
 	case EXPIRE:
-		return processExpire(c.args, c.app)
+		r, err = processExpire(c.args, c.app)
 
 	case EXPIREAT:
-		return processExpireAt(c.args, c.app)
+		r, err = processExpireAt(c.args, c.app)
 
 	case EXISTS:
-		return processExists(c.args, c.app)
+		r, err = processExists(c.args, c.app)
 
 	case DEL:
-		return processDelete(c.args, c.app)
+		r, err = processDelete(c.args, c.app)
 
 	case INCR:
-		return processIncrement(c.args, c.app)
+		r, err = processIncrement(c.args, c.app)
 
 	case DECR:
-		return processDecrement(c.args, c.app)
+		r, err = processDecrement(c.args, c.app)
 
 	case RPUSH:
-		return processRPush(c.args, c.app)
+		r, err = processRPush(c.args, c.app)
 
 	case LPUSH:
-		return processLPush(c.args, c.app)
+		r, err = processLPush(c.args, c.app)
 	}
+
+	return &CommandResult{message: []byte(r), targets: targets}, err
 }
 
 var wrongNumOfArgsErr = errors.New("wrong number of arguments.")

@@ -49,7 +49,7 @@ type testCase struct {
 	wantState    mapState
 }
 
-func setupAppAndConnection(tC testCase, t *testing.T) (*Application, net.Listener, *slog.Logger) {
+func setupApplication(tC testCase, t *testing.T) (*Application, net.Listener, *slog.Logger) {
 	timer := TestClockTimer{mockNow: tC.now}
 	logger := NewTestLogger()
 	app := NewApplication(nil, timer, logger)
@@ -164,7 +164,7 @@ func TestReadonlyCommands(t *testing.T) {
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			app, srv, logger := setupAppAndConnection(tC, t)
+			app, srv, logger := setupApplication(tC, t)
 
 			go func() { Listen(srv, app, logger) }()
 
@@ -230,7 +230,7 @@ func TestSetCommand(t *testing.T) {
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			app, srv, logger := setupAppAndConnection(tC, t)
+			app, srv, logger := setupApplication(tC, t)
 
 			go func() { Listen(srv, app, logger) }()
 
@@ -297,7 +297,7 @@ func TestGetCommand(t *testing.T) {
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			app, srv, logger := setupAppAndConnection(tC, t)
+			app, srv, logger := setupApplication(tC, t)
 
 			go func() { Listen(srv, app, logger) }()
 
@@ -349,7 +349,7 @@ func TestSetWithExpiryCommand(t *testing.T) {
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			app, srv, logger := setupAppAndConnection(tC, t)
+			app, srv, logger := setupApplication(tC, t)
 
 			go func() { Listen(srv, app, logger) }()
 
@@ -400,7 +400,7 @@ func TestActiveKeyExpiration(t *testing.T) {
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			app, srv, logger := setupAppAndConnection(tC, t)
+			app, srv, logger := setupApplication(tC, t)
 
 			go func() { Listen(srv, app, logger) }()
 
@@ -467,7 +467,7 @@ func TestExpireCommand(t *testing.T) {
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			app, srv, logger := setupAppAndConnection(tC, t)
+			app, srv, logger := setupApplication(tC, t)
 
 			go func() { Listen(srv, app, logger) }()
 
@@ -598,7 +598,7 @@ func TestExistsCommand(t *testing.T) {
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			app, srv, logger := setupAppAndConnection(tC, t)
+			app, srv, logger := setupApplication(tC, t)
 
 			go func() { Listen(srv, app, logger) }()
 
@@ -752,7 +752,7 @@ func TestDeleteCommand(t *testing.T) {
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			app, srv, logger := setupAppAndConnection(tC, t)
+			app, srv, logger := setupApplication(tC, t)
 
 			go func() { Listen(srv, app, logger) }()
 
@@ -837,7 +837,7 @@ func TestIncrementCommand(t *testing.T) {
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			app, srv, logger := setupAppAndConnection(tC, t)
+			app, srv, logger := setupApplication(tC, t)
 
 			go func() { Listen(srv, app, logger) }()
 
@@ -922,7 +922,7 @@ func TestDecrementCommand(t *testing.T) {
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			app, srv, logger := setupAppAndConnection(tC, t)
+			app, srv, logger := setupApplication(tC, t)
 
 			go func() { Listen(srv, app, logger) }()
 
@@ -989,7 +989,7 @@ func TestRPushCommand(t *testing.T) {
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			app, srv, logger := setupAppAndConnection(tC, t)
+			app, srv, logger := setupApplication(tC, t)
 
 			go func() { Listen(srv, app, logger) }()
 
@@ -1056,7 +1056,7 @@ func TestLPushCommand(t *testing.T) {
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			app, srv, logger := setupAppAndConnection(tC, t)
+			app, srv, logger := setupApplication(tC, t)
 
 			go func() { Listen(srv, app, logger) }()
 
@@ -1091,7 +1091,7 @@ func TestChangesCounting(t *testing.T) {
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			app, srv, logger := setupAppAndConnection(tC, t)
+			app, srv, logger := setupApplication(tC, t)
 
 			go func() { Listen(srv, app, logger) }()
 

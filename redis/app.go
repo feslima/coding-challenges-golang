@@ -71,19 +71,21 @@ func (app *Application) AddClient(c net.Conn) error {
 	return nil
 }
 
-func (app *Application) ProcessRequest(m Message) ([]byte, error) {
+func (app *Application) ProcessRequest(m Message) (*CommandResult, error) {
 	command, err := DecodeMessage(m.raw, app)
 	if err != nil {
 		app.logger.Error("error decoding message: " + fmt.Sprintf("%s", err))
-		return []byte{}, err
+		return nil, err
 	}
+
+	command.sender = m.conn
 	response, err := command.Process()
 	if err != nil {
 		app.logger.Error("error parsing message: " + fmt.Sprintf("%s", err))
-		return []byte{}, err
+		return nil, err
 	}
 
-	return []byte(response), nil
+	return response, nil
 }
 
 type ApplicationState struct {
