@@ -22,3 +22,10 @@ go.work
 
 # Node deps
 node_modules
+
+# redis dump files
+*.rdb
+
+# project specific Binaries
+redis-server-go
+ccwc

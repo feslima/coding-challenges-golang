@@ -7,8 +7,7 @@ commit-msg:
       # test -z forces gofmt to exit with non-zero code (https://github.com/golang/go/issues/24230)
       run: test -z $(gofmt -l -w . {all_files})
     "run tests":
-      glob: "*.go"
-      run: go test {all_files}
+      run: go list -f '{{.Dir}}' -m | xargs go test
 pre-push:
   commands:
     "tidy":
