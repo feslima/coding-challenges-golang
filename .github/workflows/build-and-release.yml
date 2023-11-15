@@ -18,6 +18,10 @@ jobs:
           go-version: '1.21.x'
       # - name: Install dependencies
       #   run: go get .
+      - name: Initialize workspace
+        run: |
+          go work init ./wc
+          go work init ./redis
       - name: Build
         run: make
       - name: Release if running on main
