@@ -277,7 +277,7 @@ func (app *Application) SubscribeConnection(chName string, c net.Conn) {
 	cMap[cAddr] = c
 }
 
-func (app *Application) GetConnectionsPerChannel(chName string) []net.Conn {
+func (app *Application) GetConnectionsPerChannelExcludingConn(chName string, excluded net.Conn) []net.Conn {
 	result := []net.Conn{}
 
 	cMap, ok := app.pubsubChannels[chName]
@@ -286,7 +286,9 @@ func (app *Application) GetConnectionsPerChannel(chName string) []net.Conn {
 	}
 
 	for _, c := range cMap {
-		result = append(result, c)
+		if c.RemoteAddr().String() != excluded.RemoteAddr().String() {
+			result = append(result, c)
+		}
 	}
 
 	return result

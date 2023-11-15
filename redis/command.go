@@ -131,7 +131,7 @@ func (c *Cmd) Process() (*CommandResult, error) {
 		r, err = processSubscribe(c.args, c.sender, c.app)
 
 	case PUBLISH:
-		r, targets, err = processPublish(c.args, c.app)
+		r, targets, err = processPublish(c.args, c.sender, c.app)
 
 		// REFACTOR: I find this rather ugly/cumbersome to write a response to publisher connection
 		// while still inside the command.
@@ -408,7 +408,7 @@ func processSubscribe(args []string, sender net.Conn, app *Application) (string,
 	return response, nil
 }
 
-func processPublish(args []string, app *Application) (string, []net.Conn, error) {
+func processPublish(args []string, sender net.Conn, app *Application) (string, []net.Conn, error) {
 	if len(args) != 2 {
 		return "", []net.Conn{}, wrongNumOfArgsErr
 	}
@@ -416,7 +416,7 @@ func processPublish(args []string, app *Application) (string, []net.Conn, error)
 	channel := args[0]
 	message := args[1]
 
-	targets := app.GetConnectionsPerChannel(channel)
+	targets := app.GetConnectionsPerChannelExcludingConn(channel, sender)
 	if len(targets) == 0 {
 		app.pubsubChannels[channel] = make(map[string]net.Conn)
 	}
