@@ -19,9 +19,7 @@ jobs:
       # - name: Install dependencies
       #   run: go get .
       - name: Initialize workspace
-        run: |
-          go work init ./wc
-          go work init ./redis
+        run: go work init ./wc ./redis
       - name: Build
         run: make
       - name: Release if running on main
