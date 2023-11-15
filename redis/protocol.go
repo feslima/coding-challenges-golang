@@ -144,7 +144,11 @@ func SerializeSimpleError(data string) string {
 	return fmt.Sprintf("-%s\r\n", data)
 }
 
-func SerializeArray(data []string) string {
+type integer interface {
+	int | int8 | int16 | int32 | int64
+}
+
+func SerializeArray(data []any) string {
 	length := int64(len(data))
 	result := fmt.Sprintf("*%d\r\n", length)
 
@@ -153,13 +157,27 @@ func SerializeArray(data []string) string {
 	}
 
 	for _, v := range data {
-		string := SerializeBulkString(v)
-		result += string
+		switch t := v.(type) {
+		default:
+			result += ""
+		case string:
+			result += SerializeBulkString(t)
+		case int:
+			result += SerializeInteger(t)
+		case int8:
+			result += SerializeInteger(t)
+		case int16:
+			result += SerializeInteger(t)
+		case int32:
+			result += SerializeInteger(t)
+		case int64:
+			result += SerializeInteger(t)
+		}
 	}
 
 	return result
 }
 
-func SerializeInteger(data int) string {
+func SerializeInteger[T integer](data T) string {
 	return fmt.Sprintf(":%d\r\n", data)
 }

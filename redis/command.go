@@ -202,7 +202,10 @@ func processConfig(args []string, app *Application) (string, error) {
 		return SerializeSimpleError(fmt.Sprintf("invalid cmd '%s'", cmd)), nil
 	case "GET":
 		params := args[1:]
-		configs := []string{}
+
+		// this is supposed to be a slice of strings, however go forces
+		// us to use a slice of interface to allow array serialization
+		configs := make([]interface{}, len(params))
 
 		for _, p := range params {
 			p = strings.ToLower(p)
