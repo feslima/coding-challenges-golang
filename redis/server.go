@@ -38,7 +38,7 @@ func Listen(server net.Listener, app *Application, l *slog.Logger) {
 			continue
 		}
 
-		err = app.AddClient(conn)
+		err = app.AddClient(conn, true)
 		if err != nil {
 			l.Error(fmt.Sprintf("failed to add client connection: %v", err))
 			conn.Write([]byte(SerializeSimpleError(err.Error())))

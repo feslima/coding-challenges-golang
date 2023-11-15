@@ -17,35 +17,39 @@ type CommandResult struct {
 }
 
 const (
-	PING     = "PING"
-	ECHO     = "ECHO"
-	SET      = "SET"
-	GET      = "GET"
-	CONFIG   = "CONFIG"
-	EXPIRE   = "EXPIRE"
-	EXPIREAT = "EXPIREAT"
-	EXISTS   = "EXISTS"
-	DEL      = "DEL"
-	INCR     = "INCR"
-	DECR     = "DECR"
-	RPUSH    = "RPUSH"
-	LPUSH    = "LPUSH"
+	PING      = "PING"
+	ECHO      = "ECHO"
+	SET       = "SET"
+	GET       = "GET"
+	CONFIG    = "CONFIG"
+	EXPIRE    = "EXPIRE"
+	EXPIREAT  = "EXPIREAT"
+	EXISTS    = "EXISTS"
+	DEL       = "DEL"
+	INCR      = "INCR"
+	DECR      = "DECR"
+	RPUSH     = "RPUSH"
+	LPUSH     = "LPUSH"
+	SUBSCRIBE = "SUBSCRIBE"
+	PUBLISH   = "PUBLISH"
 )
 
 var cmdParseTable = map[string]Command{
-	"ping":     PING,
-	"echo":     ECHO,
-	"set":      SET,
-	"get":      GET,
-	"config":   CONFIG,
-	"expire":   EXPIRE,
-	"expireat": EXPIREAT,
-	"exists":   EXISTS,
-	"del":      DEL,
-	"incr":     INCR,
-	"decr":     DECR,
-	"rpush":    RPUSH,
-	"lpush":    LPUSH,
+	"ping":      PING,
+	"echo":      ECHO,
+	"set":       SET,
+	"get":       GET,
+	"config":    CONFIG,
+	"expire":    EXPIRE,
+	"expireat":  EXPIREAT,
+	"exists":    EXISTS,
+	"del":       DEL,
+	"incr":      INCR,
+	"decr":      DECR,
+	"rpush":     RPUSH,
+	"lpush":     LPUSH,
+	"subscribe": SUBSCRIBE,
+	"publish":   PUBLISH,
 }
 
 type Cmd struct {
@@ -122,6 +126,17 @@ func (c *Cmd) Process() (*CommandResult, error) {
 
 	case LPUSH:
 		r, err = processLPush(c.args, c.app)
+
+	case SUBSCRIBE:
+		r, err = processSubscribe(c.args, c.sender, c.app)
+
+	case PUBLISH:
+		r, targets, err = processPublish(c.args, c.app)
+
+		// REFACTOR: I find this rather ugly/cumbersome to write a response to publisher connection
+		// while still inside the command.
+		c.sender.Write([]byte(SerializeInteger(len(targets))))
+
 	}
 
 	return &CommandResult{message: []byte(r), targets: targets}, err
@@ -365,4 +380,52 @@ func processLPush(args []string, app *Application) (string, error) {
 	}
 
 	return SerializeInteger(length), nil
+}
+
+func processSubscribe(args []string, sender net.Conn, app *Application) (string, error) {
+	if len(args) < 1 {
+		return "", wrongNumOfArgsErr
+	}
+
+	client, err := app.GetClient(sender)
+	if err != nil {
+		return "", err
+	}
+
+	response := ""
+	for i, cName := range args {
+		app.SubscribeConnection(cName, sender)
+		client.SubscribeTo(cName)
+
+		arr := make([]interface{}, 0)
+		arr = append(arr, "subscribe")
+		arr = append(arr, cName)
+		arr = append(arr, i+1)
+
+		response += SerializeArray(arr)
+	}
+
+	return response, nil
+}
+
+func processPublish(args []string, app *Application) (string, []net.Conn, error) {
+	if len(args) != 2 {
+		return "", []net.Conn{}, wrongNumOfArgsErr
+	}
+
+	channel := args[0]
+	message := args[1]
+
+	targets := app.GetConnectionsPerChannel(channel)
+	if len(targets) == 0 {
+		app.pubsubChannels[channel] = make(map[string]net.Conn)
+	}
+
+	result := make([]interface{}, 0)
+	result = append(result, "message")
+	result = append(result, channel)
+	result = append(result, message)
+
+	response := SerializeArray(result)
+	return response, targets, nil
 }

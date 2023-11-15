@@ -27,14 +27,21 @@ func (c RealClockTimer) Now() time.Time {
 type ApplicationClient struct {
 	conn              net.Conn
 	isOnSubscribeMode bool
+	subscribedTo      map[string]bool
+}
+
+func (ac *ApplicationClient) SubscribeTo(channelName string) {
+	ac.isOnSubscribeMode = true
+	ac.subscribedTo[channelName] = true
 }
 
 type Application struct {
-	state   *ApplicationState
-	config  *ApplicationConfiguration
-	logger  *slog.Logger
-	clock   ClockTimer
-	clients map[string]*ApplicationClient
+	state          *ApplicationState
+	config         *ApplicationConfiguration
+	logger         *slog.Logger
+	clock          ClockTimer
+	clients        map[string]*ApplicationClient
+	pubsubChannels map[string]map[string]net.Conn
 }
 
 func NewApplication(config *ApplicationConfiguration, timer ClockTimer, l *slog.Logger) *Application {
@@ -44,31 +51,63 @@ func NewApplication(config *ApplicationConfiguration, timer ClockTimer, l *slog.
 		mutex:    mutex,
 	}
 	return &Application{
-		state:   &state,
-		config:  config,
-		clock:   timer,
-		logger:  l,
-		clients: make(map[string]*ApplicationClient),
+		state:          &state,
+		config:         config,
+		clock:          timer,
+		logger:         l,
+		clients:        make(map[string]*ApplicationClient),
+		pubsubChannels: make(map[string]map[string]net.Conn),
 	}
 }
 
-func (app *Application) AddClient(c net.Conn) error {
+func (app *Application) AddClient(c net.Conn, shouldLock bool) error {
+	if shouldLock {
+		app.state.mutex.Lock()
+		defer app.state.mutex.Unlock()
+	}
+
+	if c == nil {
+		return errors.New("nil connection")
+	}
+
 	hostport := c.RemoteAddr().String()
 	host, _, err := net.SplitHostPort(hostport)
 	if err != nil {
-		return fmt.Errorf("invalid host:post address '%s'. error: %v", hostport, err)
+		return fmt.Errorf("invalid host:port address '%s'. error: %v", hostport, err)
 	}
 
-	// parsed, err := net.ResolveIPAddr("ip", host)
-	// if err != nil {
-	// 	return fmt.Errorf("invalid ip address '%s'. error: %v", host, err)
-	// }
+	_, err = net.ResolveIPAddr("ip", host)
+	if err != nil {
+		return fmt.Errorf("invalid ip address '%s'. error: %v", host, err)
+	}
 
-	app.clients[host] = &ApplicationClient{
+	app.clients[hostport] = &ApplicationClient{
 		conn:              c,
 		isOnSubscribeMode: false,
+		subscribedTo:      make(map[string]bool),
 	}
 	return nil
+}
+
+func (app *Application) GetClient(c net.Conn) (*ApplicationClient, error) {
+	app.state.mutex.Lock()
+	defer app.state.mutex.Unlock()
+
+	if c == nil {
+		return nil, errors.New("nil connection")
+	}
+
+	addr := c.RemoteAddr().String()
+	client, ok := app.clients[addr]
+	if !ok {
+		err := app.AddClient(c, false)
+		if err != nil {
+			return nil, err
+		}
+		client = app.clients[addr]
+	}
+
+	return client, nil
 }
 
 func (app *Application) ProcessRequest(m Message) (*CommandResult, error) {
@@ -224,6 +263,33 @@ func (app *Application) SetupSnapshotSavers() func() {
 
 func (app *Application) SetupKeyExpirer() func() {
 	return RunEveryNSeconds(time.Second/10, func() { CheckAndExpireKeys(app) })
+}
+
+func (app *Application) SubscribeConnection(chName string, c net.Conn) {
+	cAddr := c.RemoteAddr().String()
+	cMap, ok := app.pubsubChannels[chName]
+	if !ok {
+		cMap = map[string]net.Conn{cAddr: c}
+		app.pubsubChannels[chName] = cMap
+		return
+	}
+
+	cMap[cAddr] = c
+}
+
+func (app *Application) GetConnectionsPerChannel(chName string) []net.Conn {
+	result := []net.Conn{}
+
+	cMap, ok := app.pubsubChannels[chName]
+	if !ok {
+		return result
+	}
+
+	for _, c := range cMap {
+		result = append(result, c)
+	}
+
+	return result
 }
 
 func SaveAfterNChanges(n int64, app *Application) {

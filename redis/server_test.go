@@ -40,6 +40,11 @@ type mapState struct {
 	lm map[string]list
 }
 
+type caseTesterSetup interface {
+	Now() time.Time
+	InitialState() mapState
+}
+
 type testCase struct {
 	now          time.Time
 	desc         string
@@ -49,13 +54,22 @@ type testCase struct {
 	wantState    mapState
 }
 
-func setupApplication(tC testCase, t *testing.T) (*Application, net.Listener, *slog.Logger) {
-	timer := TestClockTimer{mockNow: tC.now}
+func (t testCase) Now() time.Time {
+	return t.now
+}
+
+func (t testCase) InitialState() mapState {
+	return t.initialState
+}
+
+func setupApplication(tC caseTesterSetup, t *testing.T) (*Application, net.Listener, *slog.Logger) {
+	timer := TestClockTimer{mockNow: tC.Now()}
 	logger := NewTestLogger()
 	app := NewApplication(nil, timer, logger)
-	app.state.keyspace.keys = tC.initialState.ks
-	app.state.keyspace.stringMap = tC.initialState.sm
-	app.state.keyspace.listMap = tC.initialState.lm
+	initialState := tC.InitialState()
+	app.state.keyspace.keys = initialState.ks
+	app.state.keyspace.stringMap = initialState.sm
+	app.state.keyspace.listMap = initialState.lm
 
 	srv, err := nettest.NewLocalListener("tcp")
 	if err != nil {
@@ -65,13 +79,13 @@ func setupApplication(tC testCase, t *testing.T) (*Application, net.Listener, *s
 	return app, srv, logger
 }
 
-func makeRequestToServer(tC testCase, srv net.Listener, t *testing.T) net.Conn {
+func makeRequestToServer(data string, srv net.Listener, t *testing.T) net.Conn {
 	conn, err := net.Dial("tcp", srv.Addr().String())
 	if err != nil {
 		t.Fatalf("could not establish connection: %v", err)
 	}
 
-	if _, err := conn.Write([]byte(tC.data)); err != nil {
+	if _, err := conn.Write([]byte(data)); err != nil {
 		t.Fatalf("could not write payload to server: %v", err)
 	}
 	return conn
@@ -168,7 +182,7 @@ func TestReadonlyCommands(t *testing.T) {
 
 			go func() { Listen(srv, app, logger) }()
 
-			conn := makeRequestToServer(tC, srv, t)
+			conn := makeRequestToServer(tC.data, srv, t)
 			defer conn.Close()
 
 			assertConnectionAndAppState(t, tC, conn, app)
@@ -234,7 +248,7 @@ func TestSetCommand(t *testing.T) {
 
 			go func() { Listen(srv, app, logger) }()
 
-			conn := makeRequestToServer(tC, srv, t)
+			conn := makeRequestToServer(tC.data, srv, t)
 			defer conn.Close()
 
 			assertConnectionAndAppState(t, tC, conn, app)
@@ -301,7 +315,7 @@ func TestGetCommand(t *testing.T) {
 
 			go func() { Listen(srv, app, logger) }()
 
-			conn := makeRequestToServer(tC, srv, t)
+			conn := makeRequestToServer(tC.data, srv, t)
 			defer conn.Close()
 
 			assertConnectionAndAppState(t, tC, conn, app)
@@ -353,7 +367,7 @@ func TestSetWithExpiryCommand(t *testing.T) {
 
 			go func() { Listen(srv, app, logger) }()
 
-			conn := makeRequestToServer(tC, srv, t)
+			conn := makeRequestToServer(tC.data, srv, t)
 			defer conn.Close()
 
 			assertConnectionAndAppState(t, tC, conn, app)
@@ -404,7 +418,7 @@ func TestActiveKeyExpiration(t *testing.T) {
 
 			go func() { Listen(srv, app, logger) }()
 
-			conn := makeRequestToServer(tC, srv, t)
+			conn := makeRequestToServer(tC.data, srv, t)
 			defer conn.Close()
 
 			assertConnectionAndAppState(t, tC, conn, app)
@@ -471,7 +485,7 @@ func TestExpireCommand(t *testing.T) {
 
 			go func() { Listen(srv, app, logger) }()
 
-			conn := makeRequestToServer(tC, srv, t)
+			conn := makeRequestToServer(tC.data, srv, t)
 			defer conn.Close()
 
 			assertConnectionAndAppState(t, tC, conn, app)
@@ -602,7 +616,7 @@ func TestExistsCommand(t *testing.T) {
 
 			go func() { Listen(srv, app, logger) }()
 
-			conn := makeRequestToServer(tC, srv, t)
+			conn := makeRequestToServer(tC.data, srv, t)
 			defer conn.Close()
 
 			assertConnectionAndAppState(t, tC, conn, app)
@@ -756,7 +770,7 @@ func TestDeleteCommand(t *testing.T) {
 
 			go func() { Listen(srv, app, logger) }()
 
-			conn := makeRequestToServer(tC, srv, t)
+			conn := makeRequestToServer(tC.data, srv, t)
 			defer conn.Close()
 
 			assertConnectionAndAppState(t, tC, conn, app)
@@ -841,7 +855,7 @@ func TestIncrementCommand(t *testing.T) {
 
 			go func() { Listen(srv, app, logger) }()
 
-			conn := makeRequestToServer(tC, srv, t)
+			conn := makeRequestToServer(tC.data, srv, t)
 			defer conn.Close()
 
 			assertConnectionAndAppState(t, tC, conn, app)
@@ -926,7 +940,7 @@ func TestDecrementCommand(t *testing.T) {
 
 			go func() { Listen(srv, app, logger) }()
 
-			conn := makeRequestToServer(tC, srv, t)
+			conn := makeRequestToServer(tC.data, srv, t)
 			defer conn.Close()
 
 			assertConnectionAndAppState(t, tC, conn, app)
@@ -993,7 +1007,7 @@ func TestRPushCommand(t *testing.T) {
 
 			go func() { Listen(srv, app, logger) }()
 
-			conn := makeRequestToServer(tC, srv, t)
+			conn := makeRequestToServer(tC.data, srv, t)
 			defer conn.Close()
 
 			assertConnectionAndAppState(t, tC, conn, app)
@@ -1060,7 +1074,7 @@ func TestLPushCommand(t *testing.T) {
 
 			go func() { Listen(srv, app, logger) }()
 
-			conn := makeRequestToServer(tC, srv, t)
+			conn := makeRequestToServer(tC.data, srv, t)
 			defer conn.Close()
 
 			assertConnectionAndAppState(t, tC, conn, app)
@@ -1095,7 +1109,7 @@ func TestChangesCounting(t *testing.T) {
 
 			go func() { Listen(srv, app, logger) }()
 
-			conn := makeRequestToServer(tC, srv, t)
+			conn := makeRequestToServer(tC.data, srv, t)
 			defer conn.Close()
 
 			assertConnectionAndAppState(t, tC, conn, app)
