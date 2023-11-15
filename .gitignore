@@ -27,5 +27,5 @@ node_modules
 *.rdb
 
 # project specific Binaries
-redis-go
+redis-server-go
 ccwc

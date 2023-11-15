@@ -3,7 +3,7 @@ all: redis wc
 .PHONY: redis redis-test wc clean
 
 redis: $(filter-out *_test.go, $(wildcard redis/*.go))
-	go build -o redis/redis-go -v redis/cmd
+	go build -o redis/redis-server-go -v redis/cmd
 
 redis-test:
 	go test -race -count=1 redis
