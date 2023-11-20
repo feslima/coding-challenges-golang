@@ -22,71 +22,47 @@ func NewTree[k cmp.Ordered, v any]() *tree[k, v] {
 }
 
 func (t tree[k, v]) Get(key k) v {
-	n := t.get(key, t.root)
-	var result v
-	if n == nil {
+	x := t.root
+
+	for x != nil && key != x.key {
+		if key < x.key {
+			x = x.left
+		} else {
+			x = x.right
+		}
+	}
+
+	if x == nil {
+		var result v
 		return result
 	}
-	return n.value
-}
 
-func (t tree[k, v]) get(key k, n *node[k, v]) (result *node[k, v]) {
-	if n == nil {
-		return
-	}
-
-	if n.key == key {
-		result = n
-		return
-	}
-
-	if key < n.key {
-		return t.get(key, n.left)
-	}
-
-	return t.get(key, n.right)
+	return x.value
 }
 
 func (t *tree[k, v]) Put(key k, val v) {
-	t.put(key, val, t.root)
-}
+	var p *node[k, v]
+	x := t.root
 
-func (t *tree[k, v]) put(key k, val v, n *node[k, v]) *node[k, v] {
-	newNode := &node[k, v]{key: key, value: val}
-	if t.size == 0 {
-		t.root = newNode
-		t.size += 1
-		return newNode
-	}
+	for x != nil {
+		p = x
 
-	if n.key == key {
-		n.value = val
-		return n
-	}
-
-	if n.key > key {
-		// this node key is greater than key
-		if n.left == nil {
-			// ready for insertion
-			n.left = newNode
-			t.size += 1
-			return newNode
+		if key < x.key {
+			x = x.left
+		} else {
+			x = x.right
 		}
-
-		// keep looking
-		return t.put(key, val, n.left)
 	}
 
-	// this node key is lesser than key
-	if n.right == nil {
-		// ready for insertion
-		n.right = newNode
-		t.size += 1
-		return newNode
+	newNode := &node[k, v]{key: key, value: val}
+	if p == nil {
+		t.root = newNode
+	} else if key < p.key {
+		p.left = newNode
+	} else {
+		p.right = newNode
 	}
-
-	// keep looking
-	return t.put(key, val, n.right)
+	t.size++
 }
 
 func (t *tree[k, v]) Remove(key k) v {
