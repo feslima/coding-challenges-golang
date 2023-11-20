@@ -1,9 +1,36 @@
 package redis
 
 import (
+	"fmt"
+	"math/rand"
 	"reflect"
 	"testing"
+	"time"
 )
+
+func TestInsertion(t *testing.T) {
+	tree := NewTree[int, int]()
+	tree.Put(50, 50)
+	tree.Put(25, 25)
+	tree.Put(75, 75)
+	tree.Put(10, 10)
+	tree.Put(33, 33)
+	tree.Put(56, 56)
+	tree.Put(89, 89)
+
+	wantSize := 7
+	gotSize := tree.Size()
+	if gotSize != wantSize {
+		t.Fatalf("got %d - want %d", gotSize, wantSize)
+	}
+
+	want := []int{10, 25, 33, 50, 56, 75, 89}
+	got := tree.GetKeySet()
+
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got keyset %v | want keyset %v", got, want)
+	}
+}
 
 func TestShouldRemoveLeftLeafWithoutChildCorrectly(t *testing.T) {
 	tree := NewTree[int, int]()
@@ -163,5 +190,32 @@ func TestShouldRemoveNodeWithTwoChildrenAndSuccessorNodeWithRightChildCorrectly(
 
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got keyset %v | want keyset %v", got, want)
+	}
+}
+
+func createRandomSlice(n int) []int {
+	elements := make([]int, n)
+	for i := 0; i < n; i++ {
+		elements[i] = i
+	}
+	rand.New(rand.NewSource(time.Now().UnixNano()))
+	rand.Shuffle(n, func(i, j int) { elements[i], elements[j] = elements[j], elements[i] })
+
+	return elements
+}
+
+func BenchmarkInsertion(b *testing.B) {
+	for _, v := range []int{10, 100, 1000, 10000, 100000, 1000000, 10000000} {
+		b.Run(fmt.Sprintf("insertion with %d elements", v), func(b *testing.B) {
+			elements := createRandomSlice(v)
+
+			for i := 0; i < b.N; i++ {
+				tree := NewTree[int, int]()
+
+				for _, e := range elements {
+					tree.Put(e, e)
+				}
+			}
+		})
 	}
 }
