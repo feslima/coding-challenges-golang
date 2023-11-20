@@ -224,14 +224,14 @@ func createRandomSlice(n int) []int {
 
 func BenchmarkSearch(b *testing.B) {
 	for _, v := range []int{10, 100, 1000, 10000, 100000, 1000000} {
+		elements := createRandomSlice(v)
+
+		tree := NewTree[int, int]()
+		for _, e := range elements {
+			tree.Put(e, e)
+		}
+
 		b.Run(fmt.Sprintf("search with %d elements", v), func(b *testing.B) {
-			elements := createRandomSlice(v)
-
-			tree := NewTree[int, int]()
-			for _, e := range elements {
-				tree.Put(e, e)
-			}
-
 			for i := 0; i < b.N; i++ {
 				tree.Get(rand.Intn(v))
 			}
@@ -239,17 +239,19 @@ func BenchmarkSearch(b *testing.B) {
 	}
 }
 
-func BenchmarkInsertion(b *testing.B) {
-	for _, v := range []int{10, 100, 1000, 10000, 100000, 1000000, 10000000} {
-		b.Run(fmt.Sprintf("insertion with %d elements", v), func(b *testing.B) {
-			elements := createRandomSlice(v)
+func BenchmarkRandomInsertion(b *testing.B) {
+	for _, v := range []int{10, 100, 1000, 10000, 100000, 1000000} {
+		elements := createRandomSlice(v)
 
-			for i := 0; i < b.N; i++ {
-				tree := NewTree[int, int]()
+		tree := NewTree[int, int]()
+		for _, e := range elements {
+			tree.Put(e, e)
+		}
 
-				for _, e := range elements {
-					tree.Put(e, e)
-				}
+		b.Run(fmt.Sprintf("insertion with %d elements", v), func(c *testing.B) {
+			for i := 0; i < c.N; i++ {
+				r := rand.Intn(v)
+				tree.Put(r, r)
 			}
 		})
 	}
