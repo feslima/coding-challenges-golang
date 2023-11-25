@@ -12,6 +12,7 @@ const (
 type node[k cmp.Ordered, v any] struct {
 	key      k
 	value    v
+	parent   *node[k, v]
 	left     *node[k, v]
 	right    *node[k, v]
 	color    color
@@ -77,14 +78,15 @@ func (t tree[k, v]) max(n *node[k, v]) *node[k, v] {
 }
 
 func (t *tree[k, v]) Put(key k, val v) {
-	t.root = t.put(key, val, t.root)
+	t.root = t.put(key, val, t.root, t.root)
 	t.root.color = BLACK
 }
 
-func (t *tree[k, v]) put(key k, val v, n *node[k, v]) *node[k, v] {
+func (t *tree[k, v]) put(key k, val v, n *node[k, v], parent *node[k, v]) *node[k, v] {
 	if n == nil {
 		return &node[k, v]{
 			key:      key,
+			parent:   parent,
 			value:    val,
 			color:    RED,
 			numNodes: 1,
@@ -92,9 +94,9 @@ func (t *tree[k, v]) put(key k, val v, n *node[k, v]) *node[k, v] {
 	}
 
 	if n.key > key {
-		n.left = t.put(key, val, n.left)
+		n.left = t.put(key, val, n.left, n)
 	} else if n.key < key {
-		n.right = t.put(key, val, n.right)
+		n.right = t.put(key, val, n.right, n)
 	} else {
 		n.value = val
 	}
@@ -191,10 +193,18 @@ func isRed[k cmp.Ordered, v any](n *node[k, v]) bool {
 
 func rotateLeft[k cmp.Ordered, v any](h *node[k, v]) *node[k, v] {
 	x := h.right
+
 	h.right = x.left
+	if h.right != nil {
+		h.right.parent = h // parent link update
+	}
 	x.left = h
 	x.color = h.color
 	h.color = RED
+
+	hP := h.parent
+	h.parent = x
+	x.parent = hP
 
 	x.numNodes = h.numNodes
 	h.numNodes = size(h.left) + size(h.right) + 1
@@ -204,9 +214,16 @@ func rotateLeft[k cmp.Ordered, v any](h *node[k, v]) *node[k, v] {
 func rotateRight[k cmp.Ordered, v any](h *node[k, v]) *node[k, v] {
 	x := h.left
 	h.left = x.right
+	if h.left != nil {
+		h.left.parent = h // parent link update
+	}
 	x.right = h
 	x.color = h.color
 	h.color = RED
+
+	hP := h.parent
+	h.parent = x
+	x.parent = hP
 
 	x.numNodes = h.numNodes
 	h.numNodes = size(h.left) + size(h.right) + 1
