@@ -354,14 +354,46 @@ func (t tree[k, v]) Size() int {
 	return t.size
 }
 
-func (t tree[k, v]) inOrderTraversal(n *node[k, v], collector *[]k) {
+func (t tree[k, v]) InOrderTraversal(visitor func(*node[k, v])) {
+	t.inOrderTraversal(t.root, visitor)
+}
+
+func (t tree[k, v]) inOrderTraversal(n *node[k, v], visitor func(*node[k, v])) {
 	if n == nil {
 		return
 	}
 
-	t.inOrderTraversal(n.left, collector)
-	*collector = append(*collector, n.key)
-	t.inOrderTraversal(n.right, collector)
+	t.inOrderTraversal(n.left, visitor)
+	visitor(n)
+	t.inOrderTraversal(n.right, visitor)
+}
+
+func (t tree[k, v]) PreOrderTraversal(visitor func(*node[k, v])) {
+	t.preOrderTraversal(t.root, visitor)
+}
+
+func (t tree[k, v]) preOrderTraversal(n *node[k, v], visitor func(*node[k, v])) {
+	if n == nil {
+		return
+	}
+
+	visitor(n)
+	t.preOrderTraversal(n.left, visitor)
+	t.preOrderTraversal(n.right, visitor)
+}
+
+func (t tree[k, v]) PostOrderTraversal(visitor func(*node[k, v])) {
+	t.postOrderTraversal(t.root, visitor)
+}
+
+func (t tree[k, v]) postOrderTraversal(n *node[k, v], visitor func(*node[k, v])) {
+	if n == nil {
+		return
+	}
+
+	t.postOrderTraversal(n.left, visitor)
+	t.postOrderTraversal(n.right, visitor)
+	visitor(n)
 }
 
 func isRed[k cmp.Ordered, v any](n *node[k, v]) bool {
