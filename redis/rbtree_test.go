@@ -77,6 +77,42 @@ func TestSearch(t *testing.T) {
 	}
 }
 
+func TestMin(t *testing.T) {
+	tree := NewTree[int, int]()
+	tree.Put(50, 50)
+	tree.Put(25, 25)
+	tree.Put(75, 75)
+	tree.Put(10, 10)
+	tree.Put(33, 33)
+	tree.Put(56, 56)
+	tree.Put(89, 89)
+
+	want := 10
+	got := tree.Min()
+
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got key %v | want key %v", got, want)
+	}
+}
+
+func TestMax(t *testing.T) {
+	tree := NewTree[int, int]()
+	tree.Put(50, 50)
+	tree.Put(25, 25)
+	tree.Put(75, 75)
+	tree.Put(10, 10)
+	tree.Put(33, 33)
+	tree.Put(56, 56)
+	tree.Put(89, 89)
+
+	want := 89
+	got := tree.Max()
+
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got key %v | want key %v", got, want)
+	}
+}
+
 func TestShouldRemoveLeftLeafWithoutChildCorrectly(t *testing.T) {
 	tree := NewTree[int, int]()
 	tree.Put(50, 50)

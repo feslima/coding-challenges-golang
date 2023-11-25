@@ -55,6 +55,28 @@ func (t tree[k, v]) get(key k, n *node[k, v]) (result *node[k, v]) {
 	return t.get(key, n.right)
 }
 
+func (t tree[k, v]) Min() k {
+	return t.min(t.root).key
+}
+
+func (t tree[k, v]) min(n *node[k, v]) *node[k, v] {
+	if n.left == nil {
+		return n
+	}
+	return t.min(n.left)
+}
+
+func (t tree[k, v]) Max() k {
+	return t.max(t.root).key
+}
+
+func (t tree[k, v]) max(n *node[k, v]) *node[k, v] {
+	if n.right == nil {
+		return n
+	}
+	return t.max(n.right)
+}
+
 func (t *tree[k, v]) Put(key k, val v) {
 	t.root = t.put(key, val, t.root)
 	t.root.color = BLACK
