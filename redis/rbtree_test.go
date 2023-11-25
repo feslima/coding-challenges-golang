@@ -319,3 +319,21 @@ func BenchmarkRandomInsertion(b *testing.B) {
 		})
 	}
 }
+
+func BenchmarkDeletion(b *testing.B) {
+	for _, v := range []int{10, 100, 1000, 10000, 100000, 1000000} {
+		elements := createRandomSlice(v)
+
+		tree := NewTree[int, int]()
+		for _, e := range elements {
+			tree.Put(e, e)
+		}
+
+		b.Run(fmt.Sprintf("deletion with %d elements", v), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				r := rand.Intn(v)
+				tree.Remove(r)
+			}
+		})
+	}
+}
