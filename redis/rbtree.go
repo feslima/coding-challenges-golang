@@ -347,9 +347,7 @@ func (t *tree[k, v]) deleteCase6(n *node[k, v]) {
 }
 
 func (t tree[k, v]) GetKeySet() []k {
-	keys := make([]k, 0)
-	t.inOrderTraversal(t.root, &keys)
-	return keys
+	return t.RangeGetKeys(t.Min(), t.Max())
 }
 
 func (t tree[k, v]) Size() int {
@@ -393,4 +391,28 @@ func (t *tree[k, v]) rotateRight(h *node[k, v]) {
 	}
 	x.right = h
 	h.parent = x
+}
+
+func (t *tree[k, v]) RangeGetKeys(lo k, hi k) []k {
+	results := make([]k, 0)
+	t.rangeGetKeys(t.root, lo, hi, &results)
+	return results
+}
+
+func (t tree[k, v]) rangeGetKeys(n *node[k, v], lo k, hi k, collector *[]k) {
+	if n == nil {
+		return
+	}
+
+	if n.key > lo {
+		t.rangeGetKeys(n.left, lo, hi, collector)
+	}
+
+	if n.key >= lo && n.key <= hi {
+		*collector = append(*collector, n.key)
+	}
+
+	if n.key < hi {
+		t.rangeGetKeys(n.right, lo, hi, collector)
+	}
 }

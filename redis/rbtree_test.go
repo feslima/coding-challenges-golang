@@ -113,6 +113,24 @@ func TestMax(t *testing.T) {
 	}
 }
 
+func TestRangeQuery(t *testing.T) {
+	tree := NewTree[int, int]()
+	tree.Put(50, 50)
+	tree.Put(25, 25)
+	tree.Put(75, 75)
+	tree.Put(10, 10)
+	tree.Put(33, 33)
+	tree.Put(56, 56)
+	tree.Put(89, 89)
+
+	want := []int{25, 33, 50, 56}
+	got := tree.RangeGetKeys(22, 60)
+
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got values %v | want values %v", got, want)
+	}
+}
+
 func TestShouldRemoveLeftLeafWithoutChildCorrectly(t *testing.T) {
 	tree := NewTree[int, int]()
 	tree.Put(50, 50)
