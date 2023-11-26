@@ -350,6 +350,10 @@ func (t rbtree[k, v]) GetKeySet() []k {
 	return t.RangeGetKeys(t.Min(), t.Max())
 }
 
+func (t rbtree[k, v]) GetValueSet() []v {
+	return t.RangeGetValues(t.Min(), t.Max())
+}
+
 func (t rbtree[k, v]) Size() int {
 	return t.size
 }
@@ -446,5 +450,29 @@ func (t rbtree[k, v]) rangeGetKeys(n *node[k, v], lo k, hi k, collector *[]k) {
 
 	if n.key < hi {
 		t.rangeGetKeys(n.right, lo, hi, collector)
+	}
+}
+
+func (t *rbtree[k, v]) RangeGetValues(lo k, hi k) []v {
+	results := make([]v, 0)
+	t.rangeGetValues(t.root, lo, hi, &results)
+	return results
+}
+
+func (t rbtree[k, v]) rangeGetValues(n *node[k, v], lo k, hi k, collector *[]v) {
+	if n == nil {
+		return
+	}
+
+	if n.key > lo {
+		t.rangeGetValues(n.left, lo, hi, collector)
+	}
+
+	if n.key >= lo && n.key <= hi {
+		*collector = append(*collector, n.value)
+	}
+
+	if n.key < hi {
+		t.rangeGetValues(n.right, lo, hi, collector)
 	}
 }
