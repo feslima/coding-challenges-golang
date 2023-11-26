@@ -190,12 +190,14 @@ func (t *rbtree[k, v]) insertCase3(n *node[k, v]) {
 
 func (t *rbtree[k, v]) insertCase4(n *node[k, v]) {
 	gp := n.grandparent()
-	if n == n.parent.right && n.parent == gp.left {
-		t.rotateLeft(n.parent)
-		n = n.left
-	} else if n == n.parent.left && n.parent == gp.right {
-		t.rotateRight(n.parent)
-		n = n.right
+	if gp != nil {
+		if n == n.parent.right && n.parent == gp.left {
+			t.rotateLeft(n.parent)
+			n = n.left
+		} else if n == n.parent.left && n.parent == gp.right {
+			t.rotateRight(n.parent)
+			n = n.right
+		}
 	}
 	t.insertCase5(n)
 }
@@ -203,11 +205,13 @@ func (t *rbtree[k, v]) insertCase4(n *node[k, v]) {
 func (t *rbtree[k, v]) insertCase5(n *node[k, v]) {
 	n.parent.color = BLACK
 	gp := n.grandparent()
-	gp.color = RED
-	if n == n.parent.left && n.parent == gp.left {
-		t.rotateRight(gp)
-	} else if n == n.parent.right && n.parent == gp.right {
-		t.rotateLeft(gp)
+	if gp != nil {
+		gp.color = RED
+		if n == n.parent.left && n.parent == gp.left {
+			t.rotateRight(gp)
+		} else if n == n.parent.right && n.parent == gp.right {
+			t.rotateLeft(gp)
+		}
 	}
 }
 
