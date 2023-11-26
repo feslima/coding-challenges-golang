@@ -32,6 +32,7 @@ const (
 	LPUSH     = "LPUSH"
 	SUBSCRIBE = "SUBSCRIBE"
 	PUBLISH   = "PUBLISH"
+	ZADD      = "ZADD"
 )
 
 var cmdParseTable = map[string]Command{
@@ -50,6 +51,7 @@ var cmdParseTable = map[string]Command{
 	"lpush":     LPUSH,
 	"subscribe": SUBSCRIBE,
 	"publish":   PUBLISH,
+	"zadd":      ZADD,
 }
 
 type Cmd struct {
@@ -137,6 +139,8 @@ func (c *Cmd) Process() (*CommandResult, error) {
 		// while still inside the command.
 		c.sender.Write([]byte(SerializeInteger(len(targets))))
 
+	case ZADD:
+		r, err = processZAdd(c.args, c.app)
 	}
 
 	return &CommandResult{message: []byte(r), targets: targets}, err
@@ -428,4 +432,34 @@ func processPublish(args []string, sender net.Conn, app *Application) (string, [
 
 	response := SerializeArray(result)
 	return response, targets, nil
+}
+
+func processZAdd(args []string, app *Application) (string, error) {
+	if len(args) < 1 {
+		return "", wrongNumOfArgsErr
+	}
+
+	key := args[0]
+	values := args[1:]
+
+	if len(values)%2 != 0 {
+		msg := "<score> <member> values must come in pairs"
+		return SerializeSimpleError(msg), nil
+	}
+
+	for i := 0; i < len(values); i += 2 {
+		rawScore := values[i]
+		_, err := strconv.ParseFloat(rawScore, 64)
+		if err != nil {
+			msg := fmt.Sprintf("could not parse '%s' to float", rawScore)
+			return SerializeSimpleError(msg), nil
+		}
+	}
+
+	length, err := app.state.keyspace.PutInSortedSet(key, values)
+	if err != nil {
+		return SerializeSimpleError(err.Error()), nil
+	}
+
+	return SerializeInteger(length), nil
 }
