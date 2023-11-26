@@ -62,7 +62,7 @@ https://github.com/emirpasic/gods/blob/10d6c5b4f2d254fd8c1a2de3e6230a3645a50cd9/
 */
 type rbtree[k cmp.Ordered, v rbtvalue] struct {
 	root *node[k, v]
-	size int
+	size int64
 }
 
 func NewTree[k cmp.Ordered, v rbtvalue]() *rbtree[k, v] {
@@ -372,7 +372,7 @@ func (t rbtree[k, v]) GetValueSet() []v {
 	return t.RangeGetValues(t.Min(), t.Max())
 }
 
-func (t rbtree[k, v]) Size() int {
+func (t rbtree[k, v]) Size() int64 {
 	return t.size
 }
 

@@ -18,7 +18,7 @@ func TestInsertion(t *testing.T) {
 	tree.Put(56, 56)
 	tree.Put(89, 89)
 
-	wantSize := 7
+	wantSize := int64(7)
 	gotSize := tree.Size()
 	if gotSize != wantSize {
 		t.Fatalf("got %d - want %d", gotSize, wantSize)
@@ -45,7 +45,7 @@ func TestStringInsertion(t *testing.T) {
 	tree.Put("P", "P")
 	tree.Put("L", "L")
 
-	wantSize := 10
+	wantSize := int64(10)
 	gotSize := tree.Size()
 	if gotSize != wantSize {
 		t.Fatalf("got %d - want %d", gotSize, wantSize)
@@ -73,7 +73,7 @@ func TestDuplicatedInsertion(t *testing.T) {
 	tree.Put("P", "P")
 	tree.Put("L", "L")
 
-	wantSize := 11
+	wantSize := int64(11)
 	gotSize := tree.Size()
 	if gotSize != wantSize {
 		t.Fatalf("got %d - want %d", gotSize, wantSize)
@@ -178,7 +178,7 @@ func TestShouldRemoveLeftLeafWithoutChildCorrectly(t *testing.T) {
 
 	tree.Remove(10)
 
-	wantSize := 6
+	wantSize := int64(6)
 	gotSize := tree.Size()
 	if gotSize != wantSize {
 		t.Fatalf("got %d - want %d", gotSize, wantSize)
@@ -204,7 +204,7 @@ func TestShouldRemoveNodeWithSingleRightChildCorrectly(t *testing.T) {
 
 	tree.Remove(10)
 
-	wantSize := 6
+	wantSize := int64(6)
 	gotSize := tree.Size()
 	if gotSize != wantSize {
 		t.Fatalf("got %d - want %d", gotSize, wantSize)
@@ -249,7 +249,7 @@ func TestShouldRemoveNodeWithTwoChildrenCorrectly(t *testing.T) {
 
 	tree.Remove(56)
 
-	wantSize := 12
+	wantSize := int64(12)
 	gotSize := tree.Size()
 	if gotSize != wantSize {
 		t.Fatalf("got %d - want %d", gotSize, wantSize)
@@ -281,7 +281,7 @@ func TestShouldRemoveNodeWithTwoChildrenAndLeftSuccessorNodeCorrectly(t *testing
 
 	tree.Remove(50)
 
-	wantSize := 11
+	wantSize := int64(11)
 	gotSize := tree.Size()
 	if gotSize != wantSize {
 		t.Fatalf("got %d - want %d", gotSize, wantSize)
@@ -313,7 +313,7 @@ func TestShouldRemoveNodeWithTwoChildrenAndSuccessorNodeWithRightChildCorrectly(
 
 	tree.Remove(50)
 
-	wantSize := 12
+	wantSize := int64(12)
 	gotSize := tree.Size()
 	if gotSize != wantSize {
 		t.Fatalf("got %d - want %d", gotSize, wantSize)

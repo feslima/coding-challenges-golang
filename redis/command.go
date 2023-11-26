@@ -33,6 +33,7 @@ const (
 	SUBSCRIBE = "SUBSCRIBE"
 	PUBLISH   = "PUBLISH"
 	ZADD      = "ZADD"
+	ZRANGE    = "ZRANGE"
 )
 
 var cmdParseTable = map[string]Command{
@@ -52,6 +53,7 @@ var cmdParseTable = map[string]Command{
 	"subscribe": SUBSCRIBE,
 	"publish":   PUBLISH,
 	"zadd":      ZADD,
+	"zrange":    ZRANGE,
 }
 
 type Cmd struct {
@@ -141,6 +143,9 @@ func (c *Cmd) Process() (*CommandResult, error) {
 
 	case ZADD:
 		r, err = processZAdd(c.args, c.app)
+
+	case ZRANGE:
+		r, err = processZRange(c.args, c.app)
 	}
 
 	return &CommandResult{message: []byte(r), targets: targets}, err
@@ -462,4 +467,39 @@ func processZAdd(args []string, app *Application) (string, error) {
 	}
 
 	return SerializeInteger(length), nil
+}
+
+func processZRange(args []string, app *Application) (string, error) {
+	if len(args) != 3 {
+		return "", wrongNumOfArgsErr
+	}
+
+	key := args[0]
+	rawStart := args[1]
+	rawStop := args[2]
+
+	start, err := strconv.ParseInt(rawStart, 0, 10)
+	if err != nil {
+		msg := fmt.Sprintf("could not parse '%s' to integer", rawStart)
+		return SerializeSimpleError(msg), nil
+	}
+
+	stop, err := strconv.ParseInt(rawStop, 0, 10)
+	if err != nil {
+		msg := fmt.Sprintf("could not parse '%s' to integer", rawStop)
+		return SerializeSimpleError(msg), nil
+	}
+
+	values, err := app.state.keyspace.GetSortedSetValuesByRange(key, start, stop)
+	if err != nil {
+		return SerializeSimpleError(err.Error()), nil
+	}
+
+	result := make([]interface{}, 0)
+	for _, v := range values {
+		result = append(result, v)
+	}
+	response := SerializeArray(result)
+
+	return response, nil
 }

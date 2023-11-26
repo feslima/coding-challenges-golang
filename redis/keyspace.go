@@ -380,6 +380,35 @@ func (ks *keyspace) PutInSortedSet(key string, values []string) (int, error) {
 	return added, nil
 }
 
+func (ks *keyspace) GetSortedSetValuesByRange(key string, start int64, stop int64) ([]string, error) {
+	ks.mutex.RLock()
+	defer ks.mutex.RUnlock()
+
+	result := make([]string, 0)
+	ke, ok := ks.keys[key]
+	if !ok {
+		return result, fmt.Errorf("key '%s' does not support this operation", key)
+	}
+
+	if ke.group != "sorted-set" {
+		return result, fmt.Errorf("key '%s' does not support this operation", key)
+	}
+
+	setVal, ok := ks.sortedSetMap[key]
+	if !ok {
+		return result, fmt.Errorf("key '%s' not found", key)
+	}
+
+	if stop < 0 {
+		stop = setVal.Size() + stop + 1
+	}
+
+	// FIXME: this takes O(N)
+	allValues := setVal.GetValueSet()
+	values := allValues[start:stop]
+	return values, nil
+}
+
 func CheckIsExpired(c ClockTimer, ke keyspaceEntry) bool {
 	if ke.expires == nil {
 		return false

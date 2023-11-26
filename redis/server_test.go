@@ -1211,13 +1211,132 @@ func TestZAddCommand(t *testing.T) {
 		{
 			now:  now,
 			desc: "push keeps correct order",
-			data: "*4\r\n$4\r\nzadd\r\n$5\r\nmyset\r\n$2\r\n10\r\n$5\r\nNorem\r\n$2\r\n12\r\n$8\r\nCastilla\r\n$1\r\n8\r\n$10\r\nSam-Bodden\r\n$2\r\n10\r\n$5\r\nRoyce\r\n$1\r\n6\r\n$4\r\nFord\r\n$2\r\n14\r\n$8\r\nPrickett\r\n",
+			data: "*14\r\n$4\r\nzadd\r\n$5\r\nmyset\r\n$2\r\n10\r\n$5\r\nNorem\r\n$2\r\n12\r\n$8\r\nCastilla\r\n$1\r\n8\r\n$10\r\nSam-Bodden\r\n$2\r\n10\r\n$5\r\nRoyce\r\n$1\r\n6\r\n$4\r\nFord\r\n$2\r\n14\r\n$8\r\nPrickett\r\n",
 			want: []byte(":6\r\n"),
 			initialState: mapState{
 				ks: map[string]keyspaceEntry{},
 				sm: map[string]string{},
 				lm: map[string]list{},
 				tm: map[string]rbtState{},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"myset": {group: "sorted-set", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string]list{},
+				tm: func() map[string]rbtState {
+					tree := NewTree[float64, string]()
+					tree.Put(10, "Norem")
+					tree.Put(12, "Castilla")
+					tree.Put(8, "Sam-Bodden")
+					tree.Put(10, "Royce")
+					tree.Put(6, "Ford")
+					tree.Put(14, "Prickett")
+
+					sset := make(map[string]rbtState)
+					sset["myset"] = rbtState{
+						tree:   *tree,
+						keys:   []float64{6, 8, 10, 10, 12, 14},
+						values: []string{"Ford", "Sam-Bodden", "Norem", "Royce", "Castilla", "Prickett"},
+					}
+					return sset
+				}(),
+			},
+		},
+	}
+	for _, tC := range testCases {
+		t.Run(tC.desc, func(t *testing.T) {
+			app, srv, logger := setupApplication(tC, t)
+
+			go func() { Listen(srv, app, logger) }()
+
+			conn := makeRequestToServer(tC.data, srv, t)
+			defer conn.Close()
+
+			assertConnectionAndAppState(t, tC, conn, app)
+		})
+	}
+}
+
+func TestZRangeCommand(t *testing.T) {
+	now := time.Now()
+
+	testCases := []testCase{
+		{
+			now:  now,
+			desc: "get all elements",
+			data: "*4\r\n$6\r\nzrange\r\n$5\r\nmyset\r\n$1\r\n0\r\n$2\r\n-1\r\n",
+			want: []byte("*6\r\n$4\r\nFord\r\n$10\r\nSam-Bodden\r\n$5\r\nNorem\r\n$5\r\nRoyce\r\n$8\r\nCastilla\r\n$8\r\nPrickett\r\n"),
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"myset": {group: "sorted-set", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string]list{},
+				tm: func() map[string]rbtState {
+					tree := NewTree[float64, string]()
+					tree.Put(10, "Norem")
+					tree.Put(12, "Castilla")
+					tree.Put(8, "Sam-Bodden")
+					tree.Put(10, "Royce")
+					tree.Put(6, "Ford")
+					tree.Put(14, "Prickett")
+
+					sset := make(map[string]rbtState)
+					sset["myset"] = rbtState{
+						tree:   *tree,
+						keys:   []float64{6, 8, 10, 10, 12, 14},
+						values: []string{"Ford", "Sam-Bodden", "Norem", "Royce", "Castilla", "Prickett"},
+					}
+					return sset
+				}(),
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"myset": {group: "sorted-set", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string]list{},
+				tm: func() map[string]rbtState {
+					tree := NewTree[float64, string]()
+					tree.Put(10, "Norem")
+					tree.Put(12, "Castilla")
+					tree.Put(8, "Sam-Bodden")
+					tree.Put(10, "Royce")
+					tree.Put(6, "Ford")
+					tree.Put(14, "Prickett")
+
+					sset := make(map[string]rbtState)
+					sset["myset"] = rbtState{
+						tree:   *tree,
+						keys:   []float64{6, 8, 10, 10, 12, 14},
+						values: []string{"Ford", "Sam-Bodden", "Norem", "Royce", "Castilla", "Prickett"},
+					}
+					return sset
+				}(),
+			},
+		},
+		{
+			now:  now,
+			desc: "get some elements elements",
+			data: "*4\r\n$6\r\nzrange\r\n$5\r\nmyset\r\n$1\r\n1\r\n$2\r\n-2\r\n",
+			want: []byte("*4\r\n$10\r\nSam-Bodden\r\n$5\r\nNorem\r\n$5\r\nRoyce\r\n$8\r\nCastilla\r\n"),
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"myset": {group: "sorted-set", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string]list{},
+				tm: func() map[string]rbtState {
+					tree := NewTree[float64, string]()
+					tree.Put(10, "Norem")
+					tree.Put(12, "Castilla")
+					tree.Put(8, "Sam-Bodden")
+					tree.Put(10, "Royce")
+					tree.Put(6, "Ford")
+					tree.Put(14, "Prickett")
+
+					sset := make(map[string]rbtState)
+					sset["myset"] = rbtState{
+						tree:   *tree,
+						keys:   []float64{6, 8, 10, 10, 12, 14},
+						values: []string{"Ford", "Sam-Bodden", "Norem", "Royce", "Castilla", "Prickett"},
+					}
+					return sset
+				}(),
 			},
 			wantState: mapState{
 				ks: map[string]keyspaceEntry{"myset": {group: "sorted-set", expires: nil}},
