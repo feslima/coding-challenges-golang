@@ -1,6 +1,9 @@
 package redis
 
-import "cmp"
+import (
+	"cmp"
+	"sort"
+)
 
 type color string
 
@@ -9,9 +12,19 @@ const (
 	BLACK = "B"
 )
 
-type node[k cmp.Ordered, v any] struct {
+type rbtvalue cmp.Ordered
+
+type nodevalue[v rbtvalue] struct {
+	entries []v
+}
+
+func (nv nodevalue[v]) Len() int           { return len(nv.entries) }
+func (nv nodevalue[v]) Swap(i, j int)      { nv.entries[i], nv.entries[j] = nv.entries[j], nv.entries[i] }
+func (nv nodevalue[v]) Less(i, j int) bool { return nv.entries[i] < nv.entries[j] }
+
+type node[k cmp.Ordered, v rbtvalue] struct {
 	key    k
-	value  v
+	value  nodevalue[v]
 	parent *node[k, v]
 	left   *node[k, v]
 	right  *node[k, v]
@@ -47,24 +60,24 @@ func (n *node[k, v]) grandparent() *node[k, v] {
 
 https://github.com/emirpasic/gods/blob/10d6c5b4f2d254fd8c1a2de3e6230a3645a50cd9/trees/redblacktree/redblacktree.go#L1
 */
-type rbtree[k cmp.Ordered, v any] struct {
+type rbtree[k cmp.Ordered, v rbtvalue] struct {
 	root *node[k, v]
 	size int
 }
 
-func NewTree[k cmp.Ordered, v any]() *rbtree[k, v] {
+func NewTree[k cmp.Ordered, v rbtvalue]() *rbtree[k, v] {
 	return &rbtree[k, v]{
 		root: nil,
 	}
 }
 
-func (t rbtree[k, v]) Get(key k) v {
+func (t rbtree[k, v]) Get(key k) []v {
 	n := t.get(key)
-	var result v
+	var result []v
 	if n == nil {
 		return result
 	}
-	return n.value
+	return n.value.entries
 }
 
 func (t *rbtree[k, v]) get(key k) *node[k, v] {
@@ -112,7 +125,7 @@ func (t *rbtree[k, v]) Put(key k, val v) {
 	if t.root == nil {
 		newNode = &node[k, v]{
 			key:   key,
-			value: val,
+			value: nodevalue[v]{entries: []v{val}},
 			color: RED,
 		}
 		t.root = newNode
@@ -133,7 +146,7 @@ func (t *rbtree[k, v]) Put(key k, val v) {
 
 		newNode = &node[k, v]{
 			key:    key,
-			value:  val,
+			value:  nodevalue[v]{entries: []v{val}},
 			parent: y,
 			color:  RED,
 		}
@@ -143,7 +156,8 @@ func (t *rbtree[k, v]) Put(key k, val v) {
 			} else if key < y.key {
 				y.left = newNode
 			} else {
-				y.value = val
+				y.value.entries = append(y.value.entries, val)
+				sort.Sort(y.value)
 				y.color = RED
 			}
 		}
@@ -362,49 +376,49 @@ func (t rbtree[k, v]) Size() int {
 	return t.size
 }
 
-func (t rbtree[k, v]) InOrderTraversal(visitor func(k, v)) {
+func (t rbtree[k, v]) InOrderTraversal(visitor func(k, []v)) {
 	t.inOrderTraversal(t.root, visitor)
 }
 
-func (t rbtree[k, v]) inOrderTraversal(n *node[k, v], visitor func(k, v)) {
+func (t rbtree[k, v]) inOrderTraversal(n *node[k, v], visitor func(k, []v)) {
 	if n == nil {
 		return
 	}
 
 	t.inOrderTraversal(n.left, visitor)
-	visitor(n.key, n.value)
+	visitor(n.key, n.value.entries)
 	t.inOrderTraversal(n.right, visitor)
 }
 
-func (t rbtree[k, v]) PreOrderTraversal(visitor func(k, v)) {
+func (t rbtree[k, v]) PreOrderTraversal(visitor func(k, []v)) {
 	t.preOrderTraversal(t.root, visitor)
 }
 
-func (t rbtree[k, v]) preOrderTraversal(n *node[k, v], visitor func(k, v)) {
+func (t rbtree[k, v]) preOrderTraversal(n *node[k, v], visitor func(k, []v)) {
 	if n == nil {
 		return
 	}
 
-	visitor(n.key, n.value)
+	visitor(n.key, n.value.entries)
 	t.preOrderTraversal(n.left, visitor)
 	t.preOrderTraversal(n.right, visitor)
 }
 
-func (t rbtree[k, v]) PostOrderTraversal(visitor func(k, v)) {
+func (t rbtree[k, v]) PostOrderTraversal(visitor func(k, []v)) {
 	t.postOrderTraversal(t.root, visitor)
 }
 
-func (t rbtree[k, v]) postOrderTraversal(n *node[k, v], visitor func(k, v)) {
+func (t rbtree[k, v]) postOrderTraversal(n *node[k, v], visitor func(k, []v)) {
 	if n == nil {
 		return
 	}
 
 	t.postOrderTraversal(n.left, visitor)
 	t.postOrderTraversal(n.right, visitor)
-	visitor(n.key, n.value)
+	visitor(n.key, n.value.entries)
 }
 
-func isRed[k cmp.Ordered, v any](n *node[k, v]) bool {
+func isRed[k cmp.Ordered, v rbtvalue](n *node[k, v]) bool {
 	if n == nil {
 		return false
 	}
@@ -449,7 +463,10 @@ func (t rbtree[k, v]) rangeGetKeys(n *node[k, v], lo k, hi k, collector *[]k) {
 	}
 
 	if n.key >= lo && n.key <= hi {
-		*collector = append(*collector, n.key)
+		nVals := n.value.Len()
+		for i := 0; i < nVals; i++ {
+			*collector = append(*collector, n.key)
+		}
 	}
 
 	if n.key < hi {
@@ -473,7 +490,7 @@ func (t rbtree[k, v]) rangeGetValues(n *node[k, v], lo k, hi k, collector *[]v) 
 	}
 
 	if n.key >= lo && n.key <= hi {
-		*collector = append(*collector, n.value)
+		*collector = append(*collector, n.value.entries...)
 	}
 
 	if n.key < hi {

@@ -59,6 +59,41 @@ func TestStringInsertion(t *testing.T) {
 	}
 }
 
+func TestDuplicatedInsertion(t *testing.T) {
+	tree := NewTree[string, string]()
+	tree.Put("S", "S")
+	tree.Put("E", "E2")
+	tree.Put("E", "E1")
+	tree.Put("A", "A")
+	tree.Put("R", "R")
+	tree.Put("C", "C")
+	tree.Put("H", "H")
+	tree.Put("X", "X")
+	tree.Put("M", "M")
+	tree.Put("P", "P")
+	tree.Put("L", "L")
+
+	wantSize := 11
+	gotSize := tree.Size()
+	if gotSize != wantSize {
+		t.Fatalf("got %d - want %d", gotSize, wantSize)
+	}
+
+	want := []string{"A", "C", "E", "E", "H", "L", "M", "P", "R", "S", "X"}
+	got := tree.GetKeySet()
+
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got keyset %v | want keyset %v", got, want)
+	}
+
+	wantV := []string{"A", "C", "E1", "E2", "H", "L", "M", "P", "R", "S", "X"}
+	gotV := tree.GetValueSet()
+
+	if !reflect.DeepEqual(gotV, wantV) {
+		t.Errorf("got valueset %v | want valueset %v", gotV, wantV)
+	}
+}
+
 func TestSearch(t *testing.T) {
 	tree := NewTree[int, int]()
 	tree.Put(50, 50)
@@ -69,8 +104,8 @@ func TestSearch(t *testing.T) {
 	tree.Put(56, 56)
 	tree.Put(89, 89)
 
-	want := 89
-	got := tree.Get(want)
+	want := []int{89}
+	got := tree.Get(want[0])
 
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got key %v | want key %v", got, want)
