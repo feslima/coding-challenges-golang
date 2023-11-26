@@ -47,18 +47,18 @@ func (n *node[k, v]) grandparent() *node[k, v] {
 
 https://github.com/emirpasic/gods/blob/10d6c5b4f2d254fd8c1a2de3e6230a3645a50cd9/trees/redblacktree/redblacktree.go#L1
 */
-type tree[k cmp.Ordered, v any] struct {
+type rbtree[k cmp.Ordered, v any] struct {
 	root *node[k, v]
 	size int
 }
 
-func NewTree[k cmp.Ordered, v any]() *tree[k, v] {
-	return &tree[k, v]{
+func NewTree[k cmp.Ordered, v any]() *rbtree[k, v] {
+	return &rbtree[k, v]{
 		root: nil,
 	}
 }
 
-func (t tree[k, v]) Get(key k) v {
+func (t rbtree[k, v]) Get(key k) v {
 	n := t.get(key)
 	var result v
 	if n == nil {
@@ -67,7 +67,7 @@ func (t tree[k, v]) Get(key k) v {
 	return n.value
 }
 
-func (t *tree[k, v]) get(key k) *node[k, v] {
+func (t *rbtree[k, v]) get(key k) *node[k, v] {
 	var result *node[k, v]
 	p := t.root
 
@@ -85,29 +85,29 @@ func (t *tree[k, v]) get(key k) *node[k, v] {
 	return result
 }
 
-func (t tree[k, v]) Min() k {
+func (t rbtree[k, v]) Min() k {
 	return t.min(t.root).key
 }
 
-func (t tree[k, v]) min(n *node[k, v]) *node[k, v] {
+func (t rbtree[k, v]) min(n *node[k, v]) *node[k, v] {
 	if n.left == nil {
 		return n
 	}
 	return t.min(n.left)
 }
 
-func (t tree[k, v]) Max() k {
+func (t rbtree[k, v]) Max() k {
 	return t.max(t.root).key
 }
 
-func (t tree[k, v]) max(n *node[k, v]) *node[k, v] {
+func (t rbtree[k, v]) max(n *node[k, v]) *node[k, v] {
 	if n.right == nil {
 		return n
 	}
 	return t.max(n.right)
 }
 
-func (t *tree[k, v]) Put(key k, val v) {
+func (t *rbtree[k, v]) Put(key k, val v) {
 	var newNode *node[k, v]
 	if t.root == nil {
 		newNode = &node[k, v]{
@@ -153,7 +153,7 @@ func (t *tree[k, v]) Put(key k, val v) {
 	t.size++
 }
 
-func (t *tree[k, v]) insertCase1(n *node[k, v]) {
+func (t *rbtree[k, v]) insertCase1(n *node[k, v]) {
 	if n.parent == nil {
 		// n is root, keep it black
 		n.color = BLACK
@@ -162,13 +162,13 @@ func (t *tree[k, v]) insertCase1(n *node[k, v]) {
 	}
 }
 
-func (t *tree[k, v]) insertCase2(n *node[k, v]) {
+func (t *rbtree[k, v]) insertCase2(n *node[k, v]) {
 	if isRed(n.parent) {
 		t.insertCase3(n)
 	}
 }
 
-func (t *tree[k, v]) insertCase3(n *node[k, v]) {
+func (t *rbtree[k, v]) insertCase3(n *node[k, v]) {
 	/*
 		If the color of the right child of grandparent of n is RED,
 		set the color of both the children of grandparent as BLACK and
@@ -188,7 +188,7 @@ func (t *tree[k, v]) insertCase3(n *node[k, v]) {
 	}
 }
 
-func (t *tree[k, v]) insertCase4(n *node[k, v]) {
+func (t *rbtree[k, v]) insertCase4(n *node[k, v]) {
 	gp := n.grandparent()
 	if n == n.parent.right && n.parent == gp.left {
 		t.rotateLeft(n.parent)
@@ -200,7 +200,7 @@ func (t *tree[k, v]) insertCase4(n *node[k, v]) {
 	t.insertCase5(n)
 }
 
-func (t *tree[k, v]) insertCase5(n *node[k, v]) {
+func (t *rbtree[k, v]) insertCase5(n *node[k, v]) {
 	n.parent.color = BLACK
 	gp := n.grandparent()
 	gp.color = RED
@@ -212,7 +212,7 @@ func (t *tree[k, v]) insertCase5(n *node[k, v]) {
 }
 
 // Replaces old node with new node
-func (t *tree[k, val]) replace(o *node[k, val], n *node[k, val]) {
+func (t *rbtree[k, val]) replace(o *node[k, val], n *node[k, val]) {
 	if o.parent == nil {
 		t.root = n
 	} else if o == o.parent.left {
@@ -225,12 +225,12 @@ func (t *tree[k, val]) replace(o *node[k, val], n *node[k, val]) {
 	}
 }
 
-func (t *tree[k, v]) Remove(key k) {
+func (t *rbtree[k, v]) Remove(key k) {
 	n := t.get(key)
 	t.remove(n)
 }
 
-func (t *tree[k, v]) remove(n *node[k, v]) {
+func (t *rbtree[k, v]) remove(n *node[k, v]) {
 	if n == nil {
 		return
 	}
@@ -266,14 +266,14 @@ func (t *tree[k, v]) remove(n *node[k, v]) {
 	t.size--
 }
 
-func (t *tree[k, v]) deleteCase1(n *node[k, v]) {
+func (t *rbtree[k, v]) deleteCase1(n *node[k, v]) {
 	if n.parent == nil {
 		return
 	}
 	t.deleteCase2(n)
 }
 
-func (t *tree[k, v]) deleteCase2(n *node[k, v]) {
+func (t *rbtree[k, v]) deleteCase2(n *node[k, v]) {
 	sibling := n.sibling()
 	if isRed(sibling) {
 		n.parent.color = RED
@@ -287,7 +287,7 @@ func (t *tree[k, v]) deleteCase2(n *node[k, v]) {
 	t.deleteCase3(n)
 }
 
-func (t *tree[k, v]) deleteCase3(n *node[k, v]) {
+func (t *rbtree[k, v]) deleteCase3(n *node[k, v]) {
 	sibling := n.sibling()
 	if !isRed(n.parent) &&
 		!isRed(sibling) &&
@@ -300,7 +300,7 @@ func (t *tree[k, v]) deleteCase3(n *node[k, v]) {
 	}
 }
 
-func (t *tree[k, v]) deleteCase4(n *node[k, v]) {
+func (t *rbtree[k, v]) deleteCase4(n *node[k, v]) {
 	sibling := n.sibling()
 	if isRed(n.parent) &&
 		!isRed(sibling) &&
@@ -313,7 +313,7 @@ func (t *tree[k, v]) deleteCase4(n *node[k, v]) {
 	}
 }
 
-func (t *tree[k, v]) deleteCase5(n *node[k, v]) {
+func (t *rbtree[k, v]) deleteCase5(n *node[k, v]) {
 	sibling := n.sibling()
 	if n == n.parent.left &&
 		!isRed(sibling) &&
@@ -333,7 +333,7 @@ func (t *tree[k, v]) deleteCase5(n *node[k, v]) {
 	t.deleteCase6(n)
 }
 
-func (t *tree[k, v]) deleteCase6(n *node[k, v]) {
+func (t *rbtree[k, v]) deleteCase6(n *node[k, v]) {
 	sibling := n.sibling()
 	sibling.color = n.parent.color
 	n.parent.color = BLACK
@@ -346,19 +346,19 @@ func (t *tree[k, v]) deleteCase6(n *node[k, v]) {
 	}
 }
 
-func (t tree[k, v]) GetKeySet() []k {
+func (t rbtree[k, v]) GetKeySet() []k {
 	return t.RangeGetKeys(t.Min(), t.Max())
 }
 
-func (t tree[k, v]) Size() int {
+func (t rbtree[k, v]) Size() int {
 	return t.size
 }
 
-func (t tree[k, v]) InOrderTraversal(visitor func(k, v)) {
+func (t rbtree[k, v]) InOrderTraversal(visitor func(k, v)) {
 	t.inOrderTraversal(t.root, visitor)
 }
 
-func (t tree[k, v]) inOrderTraversal(n *node[k, v], visitor func(k, v)) {
+func (t rbtree[k, v]) inOrderTraversal(n *node[k, v], visitor func(k, v)) {
 	if n == nil {
 		return
 	}
@@ -368,11 +368,11 @@ func (t tree[k, v]) inOrderTraversal(n *node[k, v], visitor func(k, v)) {
 	t.inOrderTraversal(n.right, visitor)
 }
 
-func (t tree[k, v]) PreOrderTraversal(visitor func(k, v)) {
+func (t rbtree[k, v]) PreOrderTraversal(visitor func(k, v)) {
 	t.preOrderTraversal(t.root, visitor)
 }
 
-func (t tree[k, v]) preOrderTraversal(n *node[k, v], visitor func(k, v)) {
+func (t rbtree[k, v]) preOrderTraversal(n *node[k, v], visitor func(k, v)) {
 	if n == nil {
 		return
 	}
@@ -382,11 +382,11 @@ func (t tree[k, v]) preOrderTraversal(n *node[k, v], visitor func(k, v)) {
 	t.preOrderTraversal(n.right, visitor)
 }
 
-func (t tree[k, v]) PostOrderTraversal(visitor func(k, v)) {
+func (t rbtree[k, v]) PostOrderTraversal(visitor func(k, v)) {
 	t.postOrderTraversal(t.root, visitor)
 }
 
-func (t tree[k, v]) postOrderTraversal(n *node[k, v], visitor func(k, v)) {
+func (t rbtree[k, v]) postOrderTraversal(n *node[k, v], visitor func(k, v)) {
 	if n == nil {
 		return
 	}
@@ -403,7 +403,7 @@ func isRed[k cmp.Ordered, v any](n *node[k, v]) bool {
 	return n.color == RED
 }
 
-func (t *tree[k, v]) rotateLeft(h *node[k, v]) {
+func (t *rbtree[k, v]) rotateLeft(h *node[k, v]) {
 	x := h.right
 	t.replace(h, x)
 	h.right = x.left
@@ -414,7 +414,7 @@ func (t *tree[k, v]) rotateLeft(h *node[k, v]) {
 	h.parent = x
 }
 
-func (t *tree[k, v]) rotateRight(h *node[k, v]) {
+func (t *rbtree[k, v]) rotateRight(h *node[k, v]) {
 	x := h.left
 	t.replace(h, x)
 	h.left = x.right
@@ -425,13 +425,13 @@ func (t *tree[k, v]) rotateRight(h *node[k, v]) {
 	h.parent = x
 }
 
-func (t *tree[k, v]) RangeGetKeys(lo k, hi k) []k {
+func (t *rbtree[k, v]) RangeGetKeys(lo k, hi k) []k {
 	results := make([]k, 0)
 	t.rangeGetKeys(t.root, lo, hi, &results)
 	return results
 }
 
-func (t tree[k, v]) rangeGetKeys(n *node[k, v], lo k, hi k, collector *[]k) {
+func (t rbtree[k, v]) rangeGetKeys(n *node[k, v], lo k, hi k, collector *[]k) {
 	if n == nil {
 		return
 	}
