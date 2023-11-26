@@ -34,10 +34,17 @@ func getFuture(now time.Time, delta int) *time.Time {
 	return &future
 }
 
+type rbtState struct {
+	tree   rbtree[float64, string]
+	keys   []float64
+	values []string
+}
+
 type mapState struct {
 	ks map[string]keyspaceEntry
 	sm map[string]string
 	lm map[string]list
+	tm map[string]rbtState
 }
 
 type caseTesterSetup interface {
@@ -70,6 +77,13 @@ func setupApplication(tC caseTesterSetup, t *testing.T) (*Application, net.Liste
 	app.state.keyspace.keys = initialState.ks
 	app.state.keyspace.stringMap = initialState.sm
 	app.state.keyspace.listMap = initialState.lm
+	app.state.keyspace.sortedSetMap = func() map[string]rbtree[float64, string] {
+		m := make(map[string]rbtree[float64, string], 0)
+		for k, v := range initialState.tm {
+			m[k] = v.tree
+		}
+		return m
+	}()
 
 	srv, err := nettest.NewLocalListener("tcp")
 	if err != nil {
@@ -107,6 +121,7 @@ func assertConnectionAndAppState(t *testing.T, tC testCase, connection net.Conn,
 	gotKs := gotState.keyspace
 	gotSmap := gotKs.stringMap
 	gotLmap := gotKs.listMap
+	gotSSmap := gotKs.sortedSetMap
 
 	if !reflect.DeepEqual(gotKs.keys, tC.wantState.ks) {
 		t.Errorf("got: %#v. want: %#v", gotKs, tC.wantState.ks)
@@ -118,6 +133,26 @@ func assertConnectionAndAppState(t *testing.T, tC testCase, connection net.Conn,
 
 	if !reflect.DeepEqual(gotLmap, tC.wantState.lm) {
 		t.Errorf("got: %#v. want: %#v", gotLmap, tC.wantState.lm)
+	}
+
+	for k, wantSSet := range tC.wantState.tm {
+		gotSSet, ok := gotSSmap[k]
+		if !ok {
+			t.Errorf("sorted key '%s' not found", k)
+		}
+
+		gotSSetKs := gotSSet.GetKeySet()
+		wantSSetKs := wantSSet.keys
+		if !reflect.DeepEqual(gotSSetKs, wantSSetKs) {
+			t.Errorf("keys set - got: %#v. want: %#v", gotSSetKs, wantSSetKs)
+		}
+
+		gotSSetVs := gotSSet.GetValueSet()
+		wantSSetVs := wantSSet.values
+		if !reflect.DeepEqual(gotSSetVs, wantSSetVs) {
+			t.Errorf("values set - got: %#v. want: %#v", gotSSetVs, wantSSetVs)
+		}
+
 	}
 }
 
@@ -1118,6 +1153,225 @@ func TestChangesCounting(t *testing.T) {
 			if mods != 1 {
 				t.Error("expected a single write count")
 			}
+		})
+	}
+}
+
+func TestZAddCommand(t *testing.T) {
+	now := time.Now()
+
+	testCases := []testCase{
+		{
+			now:  now,
+			desc: "push to non-existing key",
+			data: "*4\r\n$4\r\nzadd\r\n$5\r\nmyset\r\n$1\r\n1\r\n$5\r\nNorem\r\n",
+			want: []byte(":1\r\n"),
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{},
+				sm: map[string]string{},
+				lm: map[string]list{},
+				tm: map[string]rbtState{},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"myset": {group: "sorted-set", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string]list{},
+				tm: func() map[string]rbtState {
+					tree := NewTree[float64, string]()
+					tree.Put(1, "Norem")
+
+					sset := make(map[string]rbtState)
+					sset["myset"] = rbtState{
+						tree:   *tree,
+						keys:   []float64{1},
+						values: []string{"Norem"},
+					}
+					return sset
+				}(),
+			},
+		},
+		{
+			now:  now,
+			desc: "push to invalid existing key returns error",
+			data: "*4\r\n$4\r\nzadd\r\n$6\r\nmylist\r\n$1\r\n1\r\n$5\r\nNorem\r\n",
+			want: []byte("-key 'mylist' does not support this operation\r\n"),
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"mylist": {group: "string", expires: nil}},
+				sm: map[string]string{"mylist": "hi"},
+				lm: map[string]list{},
+				tm: map[string]rbtState{},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"mylist": {group: "string", expires: nil}},
+				sm: map[string]string{"mylist": "hi"},
+				lm: map[string]list{},
+				tm: map[string]rbtState{},
+			},
+		},
+		{
+			now:  now,
+			desc: "push keeps correct order",
+			data: "*14\r\n$4\r\nzadd\r\n$5\r\nmyset\r\n$2\r\n10\r\n$5\r\nNorem\r\n$2\r\n12\r\n$8\r\nCastilla\r\n$1\r\n8\r\n$10\r\nSam-Bodden\r\n$2\r\n10\r\n$5\r\nRoyce\r\n$1\r\n6\r\n$4\r\nFord\r\n$2\r\n14\r\n$8\r\nPrickett\r\n",
+			want: []byte(":6\r\n"),
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{},
+				sm: map[string]string{},
+				lm: map[string]list{},
+				tm: map[string]rbtState{},
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"myset": {group: "sorted-set", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string]list{},
+				tm: func() map[string]rbtState {
+					tree := NewTree[float64, string]()
+					tree.Put(10, "Norem")
+					tree.Put(12, "Castilla")
+					tree.Put(8, "Sam-Bodden")
+					tree.Put(10, "Royce")
+					tree.Put(6, "Ford")
+					tree.Put(14, "Prickett")
+
+					sset := make(map[string]rbtState)
+					sset["myset"] = rbtState{
+						tree:   *tree,
+						keys:   []float64{6, 8, 10, 10, 12, 14},
+						values: []string{"Ford", "Sam-Bodden", "Norem", "Royce", "Castilla", "Prickett"},
+					}
+					return sset
+				}(),
+			},
+		},
+	}
+	for _, tC := range testCases {
+		t.Run(tC.desc, func(t *testing.T) {
+			app, srv, logger := setupApplication(tC, t)
+
+			go func() { Listen(srv, app, logger) }()
+
+			conn := makeRequestToServer(tC.data, srv, t)
+			defer conn.Close()
+
+			assertConnectionAndAppState(t, tC, conn, app)
+		})
+	}
+}
+
+func TestZRangeCommand(t *testing.T) {
+	now := time.Now()
+
+	testCases := []testCase{
+		{
+			now:  now,
+			desc: "get all elements",
+			data: "*4\r\n$6\r\nzrange\r\n$5\r\nmyset\r\n$1\r\n0\r\n$2\r\n-1\r\n",
+			want: []byte("*6\r\n$4\r\nFord\r\n$10\r\nSam-Bodden\r\n$5\r\nNorem\r\n$5\r\nRoyce\r\n$8\r\nCastilla\r\n$8\r\nPrickett\r\n"),
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"myset": {group: "sorted-set", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string]list{},
+				tm: func() map[string]rbtState {
+					tree := NewTree[float64, string]()
+					tree.Put(10, "Norem")
+					tree.Put(12, "Castilla")
+					tree.Put(8, "Sam-Bodden")
+					tree.Put(10, "Royce")
+					tree.Put(6, "Ford")
+					tree.Put(14, "Prickett")
+
+					sset := make(map[string]rbtState)
+					sset["myset"] = rbtState{
+						tree:   *tree,
+						keys:   []float64{6, 8, 10, 10, 12, 14},
+						values: []string{"Ford", "Sam-Bodden", "Norem", "Royce", "Castilla", "Prickett"},
+					}
+					return sset
+				}(),
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"myset": {group: "sorted-set", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string]list{},
+				tm: func() map[string]rbtState {
+					tree := NewTree[float64, string]()
+					tree.Put(10, "Norem")
+					tree.Put(12, "Castilla")
+					tree.Put(8, "Sam-Bodden")
+					tree.Put(10, "Royce")
+					tree.Put(6, "Ford")
+					tree.Put(14, "Prickett")
+
+					sset := make(map[string]rbtState)
+					sset["myset"] = rbtState{
+						tree:   *tree,
+						keys:   []float64{6, 8, 10, 10, 12, 14},
+						values: []string{"Ford", "Sam-Bodden", "Norem", "Royce", "Castilla", "Prickett"},
+					}
+					return sset
+				}(),
+			},
+		},
+		{
+			now:  now,
+			desc: "get some elements elements",
+			data: "*4\r\n$6\r\nzrange\r\n$5\r\nmyset\r\n$1\r\n1\r\n$2\r\n-2\r\n",
+			want: []byte("*4\r\n$10\r\nSam-Bodden\r\n$5\r\nNorem\r\n$5\r\nRoyce\r\n$8\r\nCastilla\r\n"),
+			initialState: mapState{
+				ks: map[string]keyspaceEntry{"myset": {group: "sorted-set", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string]list{},
+				tm: func() map[string]rbtState {
+					tree := NewTree[float64, string]()
+					tree.Put(10, "Norem")
+					tree.Put(12, "Castilla")
+					tree.Put(8, "Sam-Bodden")
+					tree.Put(10, "Royce")
+					tree.Put(6, "Ford")
+					tree.Put(14, "Prickett")
+
+					sset := make(map[string]rbtState)
+					sset["myset"] = rbtState{
+						tree:   *tree,
+						keys:   []float64{6, 8, 10, 10, 12, 14},
+						values: []string{"Ford", "Sam-Bodden", "Norem", "Royce", "Castilla", "Prickett"},
+					}
+					return sset
+				}(),
+			},
+			wantState: mapState{
+				ks: map[string]keyspaceEntry{"myset": {group: "sorted-set", expires: nil}},
+				sm: map[string]string{},
+				lm: map[string]list{},
+				tm: func() map[string]rbtState {
+					tree := NewTree[float64, string]()
+					tree.Put(10, "Norem")
+					tree.Put(12, "Castilla")
+					tree.Put(8, "Sam-Bodden")
+					tree.Put(10, "Royce")
+					tree.Put(6, "Ford")
+					tree.Put(14, "Prickett")
+
+					sset := make(map[string]rbtState)
+					sset["myset"] = rbtState{
+						tree:   *tree,
+						keys:   []float64{6, 8, 10, 10, 12, 14},
+						values: []string{"Ford", "Sam-Bodden", "Norem", "Royce", "Castilla", "Prickett"},
+					}
+					return sset
+				}(),
+			},
+		},
+	}
+	for _, tC := range testCases {
+		t.Run(tC.desc, func(t *testing.T) {
+			app, srv, logger := setupApplication(tC, t)
+
+			go func() { Listen(srv, app, logger) }()
+
+			conn := makeRequestToServer(tC.data, srv, t)
+			defer conn.Close()
+
+			assertConnectionAndAppState(t, tC, conn, app)
 		})
 	}
 }

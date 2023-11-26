@@ -18,6 +18,7 @@ type keyspace struct {
 	keys          map[string]keyspaceEntry
 	stringMap     map[string]string
 	listMap       map[string]list
+	sortedSetMap  map[string]rbtree[float64, string]
 	modifications int
 }
 
@@ -44,6 +45,7 @@ func newKeyspace(clock ClockTimer, m *sync.RWMutex) *keyspace {
 		keys:          make(map[string]keyspaceEntry),
 		stringMap:     make(map[string]string),
 		listMap:       make(map[string]list),
+		sortedSetMap:  make(map[string]rbtree[float64, string]),
 		modifications: 0,
 	}
 }
@@ -337,6 +339,74 @@ func (ks *keyspace) PushToHead(key string, values []string) (int, error) {
 	ks.listMap[key] = listVal
 	ks.modifications += 1
 	return listVal.size, nil
+}
+
+func (ks *keyspace) PutInSortedSet(key string, values []string) (int, error) {
+	ks.mutex.Lock()
+	defer ks.mutex.Unlock()
+
+	ke, ok := ks.keys[key]
+	if !ok {
+		tree := NewTree[float64, string]()
+		ks.sortedSetMap[key] = *tree
+		ke = keyspaceEntry{group: "sorted-set", expires: nil}
+		ks.keys[key] = ke
+	}
+
+	if ke.group != "sorted-set" {
+		return 0, fmt.Errorf("key '%s' does not support this operation", key)
+	}
+
+	setVal, ok := ks.sortedSetMap[key]
+	if !ok {
+		return 0, fmt.Errorf("key '%s' not found", key)
+	}
+
+	added := 0
+	for i := 0; i < len(values); i += 2 {
+		rawScore := values[i]
+		member := values[i+1]
+		score, err := strconv.ParseFloat(rawScore, 64)
+		if err != nil {
+			continue
+		}
+
+		setVal.Put(score, member)
+		added++
+	}
+
+	ks.sortedSetMap[key] = setVal
+	ks.modifications += 1
+	return added, nil
+}
+
+func (ks *keyspace) GetSortedSetValuesByRange(key string, start int64, stop int64) ([]string, error) {
+	ks.mutex.RLock()
+	defer ks.mutex.RUnlock()
+
+	result := make([]string, 0)
+	ke, ok := ks.keys[key]
+	if !ok {
+		return result, fmt.Errorf("key '%s' does not support this operation", key)
+	}
+
+	if ke.group != "sorted-set" {
+		return result, fmt.Errorf("key '%s' does not support this operation", key)
+	}
+
+	setVal, ok := ks.sortedSetMap[key]
+	if !ok {
+		return result, fmt.Errorf("key '%s' not found", key)
+	}
+
+	if stop < 0 {
+		stop = setVal.Size() + stop + 1
+	}
+
+	// FIXME: this takes O(N)
+	allValues := setVal.GetValueSet()
+	values := allValues[start:stop]
+	return values, nil
 }
 
 func CheckIsExpired(c ClockTimer, ke keyspaceEntry) bool {
