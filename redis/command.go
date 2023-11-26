@@ -435,7 +435,7 @@ func processPublish(args []string, sender net.Conn, app *Application) (string, [
 }
 
 func processZAdd(args []string, app *Application) (string, error) {
-	if len(args) < 1 {
+	if len(args) < 3 {
 		return "", wrongNumOfArgsErr
 	}
 
